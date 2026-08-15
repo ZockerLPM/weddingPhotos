@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Unsere Hochzeitsfotos</title>
+  <link rel="stylesheet" href="/app.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>📷 Unsere Hochzeitsfotos</h1>
+    <p class="sub">Teile deine Fotos vom Fest – sie erscheinen direkt auf der Fotowand!</p>
+  </header>
+
+  <p class="statsline" id="stats">&nbsp;</p>
+
+  <section class="card">
+    <label class="field" for="name">Dein Vorname</label>
+    <input type="text" id="name" maxlength="40" placeholder="z. B. Anna" autocomplete="given-name">
+  </section>
+
+  <section class="card">
+    <label class="field" for="caption">Gruss oder Kommentar (optional)</label>
+    <input type="text" id="caption" maxlength="200" placeholder="Was ein schönes Fest! 🥂">
+    <div style="height:12px"></div>
+    <label class="bigbtn disabled" id="pickbtn">
+      📷 Fotos &amp; Videos auswählen
+      <input id="file" type="file" accept="image/*,video/*" multiple hidden>
+    </label>
+    <p class="hint" id="pickhint">Zuerst oben deinen Vornamen eintragen 🙂</p>
+    <p class="banner hidden" id="netbanner">📡 Gerade kein Netz – deine Fotos werden automatisch
+      gesendet, sobald die Verbindung zurück ist. Seite offen lassen!</p>
+  </section>
+
+  <section>
+    <ul class="uplist" id="list"></ul>
+  </section>
+
+  <footer>
+    <p class="fineprint">
+      Mit dem Hochladen bist du einverstanden, dass alle Hochzeitsgäste deine Fotos
+      sehen und herunterladen können. Du möchtest ein Foto entfernen lassen?
+      Sag einfach dem Brautpaar Bescheid.
+    </p>
+  </footer>
+</div>
+
+<script src="/js/queue.js"></script>
+<script src="/js/upload.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(function () {});
+  }
+</script>
+</body>
+</html>

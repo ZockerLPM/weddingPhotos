@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Galerie – Unsere Hochzeitsfotos</title>
+  <link rel="stylesheet" href="/app.css">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+</head>
+<body>
+<div class="page wide">
+  <header>
+    <h1>💒 Unsere Hochzeitsfotos</h1>
+    <p class="sub" id="subline">&nbsp;</p>
+  </header>
+
+  <div id="lock" class="lockscreen hidden">
+    <div class="big">🔒</div>
+    <h2>Die Galerie ist noch geschlossen</h2>
+    <p class="hint">Nach der Hochzeit findet ihr hier alle Fotos zum Ansehen
+      und Herunterladen. Schaut bald wieder vorbei!</p>
+  </div>
+
+  <div id="content" class="hidden">
+    <div class="toolbar">
+      <select id="filter">
+        <option value="">Alle Gäste</option>
+      </select>
+      <a class="btn primary" href="/api/gallery/zip">⬇️ Alle herunterladen (ZIP)</a>
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+</div>
+
+<div class="lightbox hidden" id="lightbox">
+  <button class="close" id="lbClose" aria-label="Schliessen">✕</button>
+  <button class="nav prev" id="lbPrev" aria-label="Zurück">‹</button>
+  <button class="nav next" id="lbNext" aria-label="Weiter">›</button>
+  <div class="media" id="lbMedia"></div>
+  <div class="meta">
+    <div class="who" id="lbWho"></div>
+    <div class="cap" id="lbCap"></div>
+    <div style="margin-top:8px"><a class="btn" id="lbDownload" download>Original herunterladen</a></div>
+  </div>
+</div>
+
+<script src="/js/gallery.js"></script>
+</body>
+</html>
