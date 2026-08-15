@@ -282,13 +282,62 @@ app.use(express.static(PUBLIC_DIR, { index: 'index.html', extensions: ['html'] }
 
 // ---------------------------------------------------------------- Fehler
 
+// Bei jedem Fehler die schon geschriebenen Teildateien wegräumen,
+// sonst sammeln sich in data/tmp/ Fragmente abgebrochener Uploads an.
+function cleanupUploads(req) {
+  const list = [];
+  if (req.file) list.push(req.file);
+  if (req.files) {
+    if (Array.isArray(req.files)) list.push(...req.files);
+    else for (const arr of Object.values(req.files)) list.push(...arr);
+  }
+  for (const f of list) {
+    if (f?.path) fsp.unlink(f.path).catch(() => {});
+  }
+}
+
 app.use((err, req, res, next) => {
+  cleanupUploads(req);
+
   if (err?.code === 'LIMIT_FILE_SIZE') {
     return res.status(413).json({ error: 'Datei zu gross' });
   }
+
+  // Abgebrochener Upload: Handy im Standby, Netz weg, Tab geschlossen.
+  // Kein Serverfehler – kompakt loggen statt Stacktrace, und dem Client
+  // signalisieren, dass ein erneuter Versuch sinnvoll ist.
+  const aborted = err?.message === 'Unexpected end of form'
+    || err?.code === 'ECONNRESET'
+    || err?.code === 'ECONNABORTED'
+    || req.destroyed;
+  if (aborted) {
+    console.warn('[Upload abgebrochen] %s  laenge=%s  ua=%s',
+      req.originalUrl,
+      req.get('content-length') || '?',
+      (req.get('user-agent') || '-').slice(0, 70));
+    if (!res.headersSent) res.status(408).json({ error: 'Upload abgebrochen' });
+    return;
+  }
+
   console.error(err);
-  res.status(500).json({ error: 'Serverfehler' });
+  if (!res.headersSent) res.status(500).json({ error: 'Serverfehler' });
 });
+
+// Verwaiste Teildateien aufräumen (Start + stündlich).
+async function sweepTmp() {
+  try {
+    const now = Date.now();
+    for (const name of await fsp.readdir(db.dirs.tmp)) {
+      const f = path.join(db.dirs.tmp, name);
+      const st = await fsp.stat(f).catch(() => null);
+      if (st && now - st.mtimeMs > 2 * 3600 * 1000) {
+        await fsp.unlink(f).catch(() => {});
+      }
+    }
+  } catch { /* Verzeichnis fehlt o.ä. – unkritisch */ }
+}
+sweepTmp();
+setInterval(sweepTmp, 3600 * 1000).unref();
 
 const server = app.listen(PORT, () => {
   console.log(`Fotowand läuft auf Port ${PORT}, Daten in ${db.dirs.data}`);

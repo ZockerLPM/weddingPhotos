@@ -45,7 +45,8 @@
 
   // ---------------------------------------------------------- Status-Liste
 
-  var rows = {}; // clientId -> li
+  var rows = {};       // clientId -> li
+  var rowsState = {};  // clientId -> zuletzt gerenderter Zustand
 
   function statusText(item) {
     switch (item.state) {
@@ -86,6 +87,18 @@
     st2.className = 'st' +
       (item.state === 'done' || item.state === 'meta' ? ' ok' : '') +
       (item.state === 'failed' ? ' err' : '');
+
+    // Aufgegeben? Antippen startet einen neuen Versuch.
+    var failed = item.state === 'failed';
+    li.style.cursor = failed ? 'pointer' : '';
+    if (failed && !li.dataset.retry) {
+      li.dataset.retry = '1';
+      li.addEventListener('click', function () {
+        if (rowsState[item.clientId] !== 'failed') return;
+        UploadQueue.retry(item.clientId);
+      });
+    }
+    rowsState[item.clientId] = item.state;
   }
 
   UploadQueue.onChange(render);

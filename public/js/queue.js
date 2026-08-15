@@ -9,6 +9,9 @@
 
   var DB_NAME = 'wedding-upload';
   var STORE = 'q';
+  // Nach so vielen erfolglosen Versuchen aufgeben, statt endlos zu wiederholen
+  // (sonst spammt ein kaputter Upload Server-Log und Akku).
+  var MAX_ATTEMPTS = 10;
   var listeners = [];
   var memoryFallback = []; // falls IndexedDB voll/kaputt ist (grosse Videos)
   var running = false;
@@ -67,9 +70,11 @@
 
   function backoff(item, permanent, msg) {
     item.attempts = (item.attempts || 0) + 1;
-    if (permanent) {
+    if (permanent || item.attempts >= MAX_ATTEMPTS) {
       item.state = 'failed';
-      item.error = msg || 'fehlgeschlagen';
+      item.error = msg || (permanent
+        ? 'fehlgeschlagen'
+        : 'mehrfach abgebrochen – zum erneuten Versuch antippen');
     } else {
       item.nextTry = Date.now() + Math.min(60000, 3000 * Math.pow(2, item.attempts));
     }
@@ -155,6 +160,19 @@
     pending: allItems,
     onChange: function (fn) { listeners.push(fn); },
     pump: pump,
+
+    // Aufgegebenen Upload von Hand neu anstossen (Antippen in der Liste).
+    retry: function (clientId) {
+      return allItems().then(function (items) {
+        var it = items.filter(function (x) { return x.clientId === clientId; })[0];
+        if (!it || it.state !== 'failed') return;
+        it.state = it.serverId ? 'meta' : 'new';
+        it.attempts = 0;
+        it.nextTry = 0;
+        delete it.error;
+        return put(it).then(function () { notify(it, 'update'); pump(); });
+      });
+    },
   };
 
   window.addEventListener('online', pump);

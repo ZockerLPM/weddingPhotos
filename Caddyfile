@@ -1,7 +1,9 @@
 {$DOMAIN} {
-	# Videos können gross sein – ohne das Limit gibt es 413-Fehler.
+	# Bewusst grösser als das Multer-Limit (512MB) im Server: so lehnt
+	# Multer zu grosse Dateien sauber mit 413 ab, statt dass Caddy den
+	# Stream mittendrin kappt (das erzeugt "Unexpected end of form").
 	request_body {
-		max_size 512MB
+		max_size 600MB
 	}
 
 	# flush_interval -1: Server-Sent Events sofort durchreichen,

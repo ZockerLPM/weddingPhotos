@@ -247,7 +247,9 @@ anlegen, gesichertes `data/` nach `/opt/hochzeit/app/data/` kopieren,
 |---|---|
 | `docker compose logs app` zeigt „MOD_KEY fehlt" | `.env` nicht angelegt oder Platzhalter nicht ersetzt |
 | Kein TLS-Zertifikat | DNS zeigt noch nicht auf den Server (`nslookup`), oder Port 80 zu. `docker compose logs caddy` |
-| Upload bricht mit 413 ab | Datei > 512 MB. Limit in `Caddyfile` (`max_size`) und `server/index.js` (`upOriginal`) erhöhen |
+| Upload bricht mit 413 ab | Datei > 512 MB. Limit in `server/index.js` (`upOriginal`) erhöhen – `Caddyfile` (`max_size`) muss **grösser** bleiben als dieser Wert |
+| Log: `[Upload abgebrochen] …` | Normal, kein Fehler: Handy ging in Standby, Netz weg oder Tab geschlossen. Die Warteschlange im Browser sendet automatisch neu. Erst wenn es dauerhaft dieselbe Datei trifft, ist die Datei selbst das Problem |
+| Log: `Unexpected end of form` mit Stacktrace | Alte Version – ab dem Fix wird daraus die kompakte Zeile oben. `docker compose up -d --build` |
 | Fotos erscheinen nicht live auf `/show` | `docker compose logs caddy` – SSE braucht `flush_interval -1` (ist konfiguriert). Browser-Konsole auf `/show` prüfen |
 | „wartet auf Netz" hängt ewig | Handy hat Captive-Portal-WLAN ohne Internet → Mobilfunk nutzen. Seite offen lassen, Queue sendet automatisch nach |
 | HEIC-Foto schlägt auf Android fehl | Android-Chrome kann HEIC nicht dekodieren (iPhone-Fotos via Messenger). Betroffene Gäste: Foto stattdessen aus der Kamera-App teilen |
