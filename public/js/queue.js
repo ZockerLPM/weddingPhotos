@@ -12,6 +12,15 @@
   // Nach so vielen erfolglosen Versuchen aufgeben, statt endlos zu wiederholen
   // (sonst spammt ein kaputter Upload Server-Log und Akku).
   var MAX_ATTEMPTS = 10;
+
+  // iOS Safari kann eine File-REFERENZ aus <input type="file"> nicht
+  // zuverlässig aus IndexedDB zurückgeben – der Upload geht dann mit
+  // 0 Bytes raus. Deshalb die Bytes vor dem Speichern materialisieren.
+  // Sehr grosse Dateien (Videos) bleiben nur im Speicher dieser Sitzung,
+  // weil ein 300-MB-ArrayBuffer das Handy sonst in die Knie zwingt.
+  var MATERIALIZE_MAX = 60 * 1024 * 1024;
+  var liveOriginals = {}; // clientId -> File/Blob, nur diese Sitzung
+
   var listeners = [];
   var memoryFallback = []; // falls IndexedDB voll/kaputt ist (grosse Videos)
   var running = false;
@@ -50,6 +59,7 @@
   }
 
   function remove(clientId) {
+    delete liveOriginals[clientId];
     memoryFallback = memoryFallback.filter(function (x) { return x.clientId !== clientId; });
     return tx('readwrite', function (s) { s.delete(clientId); }).catch(function () {});
   }
@@ -106,7 +116,7 @@
     f.append('thumb', item.thumbBlob, 'thumb.jpg');
     return postForm('/api/upload', f).then(function (res) {
       item.serverId = res.id;
-      item.state = item.originalBlob ? 'meta' : 'done';
+      item.state = item.wantsOriginal ? 'meta' : 'done';
       item.nextTry = 0;
       item.attempts = 0;
       // Anzeigebild/Thumb nicht mehr nötig -> Speicher freigeben.
@@ -121,8 +131,20 @@
   }
 
   function sendOriginal(item) {
+    // Erst der Speicher dieser Sitzung, dann die materialisierte Kopie.
+    var blob = liveOriginals[item.clientId] || item.originalBlob;
+
+    // Kein Inhalt mehr da (Seite neu geladen, Referenz verloren)? Dann nicht
+    // endlos 0 Bytes senden – das Anzeigebild ist längst geteilt.
+    if (!blob || !blob.size) {
+      item.state = 'done';
+      item.originalLost = true;
+      notify(item, 'done');
+      return remove(item.clientId);
+    }
+
     var f = new FormData();
-    f.append('original', item.originalBlob, item.filename || 'original');
+    f.append('original', blob, item.filename || 'original');
     return postForm('/api/original/' + item.serverId, f).then(function () {
       item.state = 'done';
       notify(item, 'done');
@@ -152,7 +174,33 @@
     enqueue: function (item) {
       item.state = 'new';
       item.attempts = 0;
-      return put(item).then(function () {
+
+      var orig = item.originalBlob;
+      delete item.originalBlob;
+      item.wantsOriginal = !!orig;
+
+      var prepared;
+      if (!orig) {
+        prepared = Promise.resolve();
+      } else {
+        // Für diese Sitzung immer im Speicher halten – schnellster und
+        // sicherster Weg, unabhängig von IndexedDB.
+        liveOriginals[item.clientId] = orig;
+        if (orig.size <= MATERIALIZE_MAX) {
+          // Echte Bytes statt Datei-Referenz: übersteht Reload und iOS.
+          prepared = orig.arrayBuffer().then(function (buf) {
+            item.originalBlob = new Blob([buf], {
+              type: orig.type || 'application/octet-stream',
+            });
+          }).catch(function () { /* dann eben nur im Speicher */ });
+        } else {
+          prepared = Promise.resolve();
+        }
+      }
+
+      return prepared.then(function () {
+        return put(item);
+      }).then(function () {
         notify(item, 'queued');
         pump();
       });

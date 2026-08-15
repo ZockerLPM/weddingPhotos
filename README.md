@@ -253,6 +253,7 @@ anlegen, gesichertes `data/` nach `/opt/hochzeit/app/data/` kopieren,
 | Fotos erscheinen nicht live auf `/show` | `docker compose logs caddy` – SSE braucht `flush_interval -1` (ist konfiguriert). Browser-Konsole auf `/show` prüfen |
 | „wartet auf Netz" hängt ewig | Handy hat Captive-Portal-WLAN ohne Internet → Mobilfunk nutzen. Seite offen lassen, Queue sendet automatisch nach |
 | HEIC-Foto schlägt auf Android fehl | Android-Chrome kann HEIC nicht dekodieren (iPhone-Fotos via Messenger). Betroffene Gäste: Foto stattdessen aus der Kamera-App teilen |
+| iPhone bleibt bei „Original folgt …", Log zeigt `laenge=0` | Behoben. iOS Safari konnte die `File`-Referenz nicht aus IndexedDB zurückgeben. Die Warteschlange materialisiert die Bytes jetzt vor dem Speichern (`MATERIALIZE_MAX` in `queue.js`) |
 | Platte läuft voll | `df -h`; Volume in Hetzner-Konsole anhängen, in compose als zusätzlichen Mount für `./data` nutzen |
 | Galerie-ZIP bricht ab | Bei sehr grossen Sammlungen Browser-Download-Timeout – einzelne Tage/Gäste laden oder ZIP per `curl -O` ziehen |
 

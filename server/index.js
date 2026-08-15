@@ -147,6 +147,12 @@ app.post('/api/original/:id', upOriginal.single('original'), async (req, res) =>
   if (!p) { await cleanup(); return res.status(404).json({ error: 'unbekannt' }); }
   if (!req.file) return res.status(400).json({ error: 'keine Datei' });
   if (p.has_original) { await cleanup(); return res.json({ ok: true, existed: true }); }
+  // Leeres Original niemals als "vorhanden" verbuchen – sonst steht in der
+  // Galerie ein kaputter Download statt des Anzeigebilds.
+  if (!req.file.size) {
+    await cleanup();
+    return res.status(400).json({ error: 'Original war leer' });
+  }
 
   const ext = sanitizeExt(req.file.originalname)
     || (p.kind === 'video' ? 'mp4' : 'jpg');

@@ -53,9 +53,10 @@
       case 'processing': return 'wird verkleinert …';
       case 'new': return navigator.onLine ? '⬆️ lädt hoch …' : 'wartet auf Netz …';
       case 'meta': return '✓ auf der Fotowand – Original folgt …';
-      case 'done': return item.skipOriginal
-        ? '✓ geteilt (Video zu gross fürs Original)'
-        : '✓✓ komplett gesichert';
+      case 'done':
+        if (item.skipOriginal) return '✓ geteilt (Datei zu gross fürs Original)';
+        if (item.originalLost) return '✓ geteilt (Original nicht mehr verfügbar)';
+        return '✓✓ komplett gesichert';
       case 'failed': return '⚠️ ' + (item.error || 'fehlgeschlagen');
       default: return '';
     }
