@@ -1,0 +1,19 @@
+{
+  "name": "hochzeits-fotowand",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Foto-Upload, Live-Fotowand und Galerie für die Hochzeit",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "better-sqlite3": "^12.2.0",
+    "express": "^5.1.0",
+    "multer": "^2.0.1"
+  }
+}

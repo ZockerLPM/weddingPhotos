@@ -1,0 +1,12 @@
+{$DOMAIN} {
+	# Videos können gross sein – ohne das Limit gibt es 413-Fehler.
+	request_body {
+		max_size 512MB
+	}
+
+	# flush_interval -1: Server-Sent Events sofort durchreichen,
+	# nicht puffern.
+	reverse_proxy app:3000 {
+		flush_interval -1
+	}
+}
