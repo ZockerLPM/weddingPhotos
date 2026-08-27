@@ -131,6 +131,13 @@
     api('/api/mod/gallery', { open: opening })
       .then(function (r) { state = r.state; renderChips(); });
   });
+  document.getElementById('btnRecap').addEventListener('click', function () {
+    if (!confirm('Mitternachts-Rückblick auf der Fotowand starten?\n\n' +
+      'Dauert je nach Fotomenge etwa 4–6 Minuten und endet mit den ' +
+      'Auszeichnungen. Danach läuft die normale Fotowand weiter.')) return;
+    api('/api/mod/control', { action: 'recap' });
+  });
+
   document.getElementById('btnReload').addEventListener('click', function () {
     api('/api/mod/control', { action: 'reload' });
   });

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Erzählecke</title>
+  <link rel="stylesheet" href="/app.css">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <style>
+    body { overscroll-behavior: none; }
+    .box { max-width: 620px; margin: 0 auto; padding: 18px 16px 40px; }
+
+    .stage {
+      position: relative;
+      background: #000;
+      border-radius: var(--radius);
+      overflow: hidden;
+      aspect-ratio: 3 / 4;
+      margin-bottom: 14px;
+    }
+    .stage video {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    /* Vorschau spiegeln wie ein Spiegel – Aufnahme selbst bleibt normal. */
+    .stage video.mirror { transform: scaleX(-1); }
+
+    .rec {
+      position: absolute; top: 12px; left: 12px;
+      background: rgba(224, 122, 106, .92);
+      color: #fff;
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: .95rem;
+      font-variant-numeric: tabular-nums;
+      display: none;
+      align-items: center; gap: 8px;
+    }
+    .rec.on { display: flex; }
+    .rec .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #fff;
+      animation: blink 1s steps(2, start) infinite;
+    }
+    @keyframes blink { to { visibility: hidden; } }
+
+    .prompts {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+    .prompts h2 { font-size: 1rem; margin: 0 0 8px; }
+    .prompts ul { margin: 0; padding-left: 20px; color: var(--muted); font-size: .9rem; }
+    .prompts li { margin-bottom: 4px; }
+
+    .actions { display: grid; gap: 10px; }
+    .actions.two { grid-template-columns: 1fr 1fr; }
+
+    .status {
+      text-align: center;
+      color: var(--muted);
+      min-height: 1.4em;
+      margin: 10px 0 0;
+    }
+    .status.ok { color: var(--ok); }
+    .status.err { color: var(--err); }
+  </style>
+</head>
+<body>
+<div class="box">
+  <header>
+    <h1>🎙️ Erzählecke</h1>
+    <p class="sub">Hinterlasst uns eine Videobotschaft – wir schauen sie
+      uns in vielen Jahren noch an.</p>
+  </header>
+
+  <section class="card">
+    <label class="field" for="name">Wer spricht?</label>
+    <input type="text" id="name" maxlength="40" placeholder="z. B. Werner" autocomplete="given-name">
+  </section>
+
+  <div class="prompts">
+    <h2>Erzähl uns …</h2>
+    <ul>
+      <li>Woher kennst du uns?</li>
+      <li>Was ist deine liebste Erinnerung mit uns?</li>
+      <li>Was wünschst du uns für die nächsten Jahre?</li>
+    </ul>
+  </div>
+
+  <div class="stage">
+    <video id="preview" playsinline muted class="mirror"></video>
+    <div class="rec" id="rec"><span class="dot"></span><span id="recTime">0:00</span></div>
+  </div>
+
+  <div class="actions" id="actions">
+    <div class="bigbtn disabled" id="btnStart">🎬 Aufnahme starten</div>
+  </div>
+
+  <p class="status" id="status">Kamera wird vorbereitet …</p>
+
+  <p class="fineprint">
+    Maximal 90 Sekunden. Du kannst die Aufnahme beliebig oft wiederholen,
+    bevor du sie absendest.
+  </p>
+</div>
+
+<script src="/js/queue.js"></script>
+<script src="/js/box.js"></script>
+</body>
+</html>

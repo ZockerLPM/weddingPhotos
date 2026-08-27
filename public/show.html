@@ -100,6 +100,53 @@
       font-weight: 600;
     }
     #waiting .sub { color: #9aa0aa; font-size: clamp(14px, 2.4vh, 24px); }
+
+    /* Namentliche Begrüssung beim ersten Beitrag eines Gastes */
+    #badge.greeting {
+      background: rgba(212, 175, 106, .95);
+      border-color: #f0d9a8;
+      color: #201a10;
+      font-size: clamp(20px, 3.4vh, 38px);
+      padding: 16px 40px;
+    }
+    #badge.greeting b { color: #201a10; }
+
+    /* Rückblick: Uhrzeit-Marke oben */
+    #clock {
+      position: fixed; top: 3vh; left: 50%;
+      transform: translateX(-50%);
+      color: rgba(240, 237, 230, .8);
+      font-size: clamp(16px, 2.6vh, 30px);
+      letter-spacing: .12em;
+      text-shadow: 0 1px 6px #000;
+      opacity: 0; transition: opacity .5s;
+    }
+    #clock.on { opacity: 1; }
+
+    /* Vollflächige Karte für Titel, Auszeichnungen und Abschluss */
+    #card {
+      position: fixed; inset: 0;
+      background: radial-gradient(circle at 50% 40%, #1d2026 0%, #0b0d10 75%);
+      display: flex;
+      flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center; gap: 1.6vh; padding: 5vw;
+      /* visibility statt display, damit die Überblendung wirklich läuft */
+      visibility: hidden; opacity: 0;
+      transition: opacity .8s ease, visibility 0s linear .8s;
+      z-index: 20;
+    }
+    #card.on {
+      visibility: visible; opacity: 1;
+      transition: opacity .8s ease, visibility 0s;
+    }
+    #card .icon { font-size: clamp(46px, 11vh, 130px); line-height: 1; }
+    #card .title {
+      font-size: clamp(22px, 4.4vh, 54px);
+      color: #d4af6a; letter-spacing: .02em;
+    }
+    #card .who { font-size: clamp(30px, 7vh, 84px); font-weight: 600; }
+    #card .detail { color: #9aa0aa; font-size: clamp(15px, 2.6vh, 30px); }
   </style>
 </head>
 <body>
@@ -109,7 +156,15 @@
 </div>
 
 <div id="badge"></div>
+<div id="clock"></div>
 <div id="credit"></div>
+
+<div id="card">
+  <div class="icon" id="cardIcon"></div>
+  <div class="title" id="cardTitle"></div>
+  <div class="who" id="cardWho"></div>
+  <div class="detail" id="cardDetail"></div>
+</div>
 <div id="counter"></div>
 <div id="pausedIcon">⏸</div>
 <div id="offlineIcon">📡</div>
@@ -121,6 +176,7 @@
   <div class="sub">… und Sekunden später erscheinen sie hier.</div>
 </div>
 
+<script src="/js/challenges.js"></script>
 <script src="/js/show.js"></script>
 </body>
 </html>

@@ -110,6 +110,7 @@
     f.append('kind', item.kind);
     f.append('takenAt', String(item.takenAt));
     f.append('caption', item.caption || '');
+    f.append('challengeId', item.challengeId || '');
     f.append('w', String(item.w || ''));
     f.append('h', String(item.h || ''));
     f.append('display', item.displayBlob, 'display.jpg');

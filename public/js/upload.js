@@ -16,6 +16,8 @@
   var elList = document.getElementById('list');
   var elStats = document.getElementById('stats');
   var elNet = document.getElementById('netbanner');
+  var elChalList = document.getElementById('chalList');
+  var elChalProgress = document.getElementById('chalProgress');
 
   // ---------------------------------------------------------- Identität
 
@@ -32,9 +34,14 @@
   function refreshPickState() {
     elPick.classList.toggle('disabled', !nameOk());
     elFile.disabled = !nameOk();
-    elPickHint.textContent = nameOk()
-      ? 'Du kannst mehrere auf einmal auswählen.'
-      : 'Zuerst oben deinen Vornamen eintragen 🙂';
+    if (!nameOk()) {
+      elPickHint.textContent = 'Zuerst oben deinen Vornamen eintragen 🙂';
+      return;
+    }
+    var c = window.challengeById(activeChallenge);
+    elPickHint.textContent = c
+      ? 'Aufgabe gewählt: ' + c.text
+      : 'Du kannst mehrere auf einmal auswählen.';
   }
 
   elName.addEventListener('input', function () {
@@ -42,6 +49,56 @@
     refreshPickState();
   });
   refreshPickState();
+
+  // ---------------------------------------------------------- Foto-Aufgaben
+
+  var activeChallenge = null;
+  var doneChallenges = {};
+  try { doneChallenges = JSON.parse(localStorage.getItem('doneChallenges') || '{}'); }
+  catch (e) { doneChallenges = {}; }
+
+  function markChallengeDone(id) {
+    if (!id) return;
+    doneChallenges[id] = 1;
+    try { localStorage.setItem('doneChallenges', JSON.stringify(doneChallenges)); }
+    catch (e) { /* Speicher voll – kosmetisch, nicht kritisch */ }
+    renderChallenges();
+  }
+
+  function renderChallenges() {
+    if (!elChalList) return;
+    elChalList.textContent = '';
+    var done = 0;
+
+    window.CHALLENGES.forEach(function (c) {
+      var isDone = !!doneChallenges[c.id];
+      if (isDone) done++;
+      var li = document.createElement('li');
+      li.className = 'chal' +
+        (isDone ? ' done' : '') +
+        (activeChallenge === c.id ? ' active' : '');
+
+      var icon = document.createElement('span');
+      icon.className = 'chal-icon';
+      icon.textContent = isDone ? '✅' : c.icon;
+
+      var txt = document.createElement('span');
+      txt.className = 'chal-text';
+      txt.textContent = c.text;
+
+      li.appendChild(icon);
+      li.appendChild(txt);
+      li.addEventListener('click', function () {
+        // Nochmal antippen hebt die Auswahl wieder auf.
+        activeChallenge = (activeChallenge === c.id) ? null : c.id;
+        renderChallenges();
+        refreshPickState();
+      });
+      elChalList.appendChild(li);
+    });
+
+    elChalProgress.textContent = done + ' von ' + window.CHALLENGES.length;
+  }
 
   // ---------------------------------------------------------- Status-Liste
 
@@ -168,7 +225,7 @@
     });
   }
 
-  function processFile(file, uploader, caption) {
+  function processFile(file, uploader, caption, challengeId) {
     var isVideo = (file.type || '').indexOf('video') === 0;
     var item = {
       clientId: crypto.randomUUID(),
@@ -176,6 +233,7 @@
       deviceId: deviceId,
       kind: isVideo ? 'video' : 'photo',
       caption: caption,
+      challengeId: challengeId || null,
       takenAt: file.lastModified || Date.now(),
       filename: file.name,
       state: 'processing',
@@ -235,11 +293,25 @@
     var uploader = elName.value.trim();
     var caption = elCaption.value.trim();
     elCaption.value = '';
+
+    // Die Aufgabe gilt für diesen Schwung und wird danach wieder freigegeben.
+    var challengeId = activeChallenge;
+    if (challengeId) {
+      markChallengeDone(challengeId);
+      activeChallenge = null;
+      renderChallenges();
+      refreshPickState();
+    }
+
     // Sequentiell verarbeiten – schont den Speicher auf älteren Handys.
     files.reduce(function (chain, f) {
-      return chain.then(function () { return processFile(f, uploader, caption); });
+      return chain.then(function () {
+        return processFile(f, uploader, caption, challengeId);
+      });
     }, Promise.resolve());
   });
+
+  renderChallenges();
 
   // ---------------------------------------------------------- Zähler & Netz
 

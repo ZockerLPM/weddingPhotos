@@ -49,10 +49,10 @@
       img.src = '/i/' + p.id + '-t.jpg';
       img.alt = 'Foto von ' + p.uploader;
       tile.appendChild(img);
-      if (p.kind === 'video') {
+      if (p.kind === 'video' || p.kind === 'message') {
         var v = document.createElement('span');
         v.className = 'vid';
-        v.textContent = '🎬';
+        v.textContent = p.kind === 'message' ? '🎙️' : '🎬';
         tile.appendChild(v);
       }
       tile.addEventListener('click', function () { openLb(i); });
@@ -66,7 +66,7 @@
     if (!p) return;
     elLbMedia.textContent = '';
 
-    if (p.kind === 'video' && p.hasOriginal) {
+    if ((p.kind === 'video' || p.kind === 'message') && p.hasOriginal) {
       var video = document.createElement('video');
       video.controls = true;
       video.playsInline = true;
@@ -79,9 +79,12 @@
       elLbMedia.appendChild(img);
     }
 
-    elLbWho.textContent = 'von ' + p.uploader;
-    elLbCap.textContent = p.caption ||
-      (p.kind === 'video' && !p.hasOriginal ? 'Video war zu gross fürs Hochladen – nur Vorschaubild.' : '');
+    elLbWho.textContent = (p.kind === 'message' ? '🎙️ Botschaft von ' : 'von ') + p.uploader;
+    var chal = window.challengeById && window.challengeById(p.challengeId);
+    elLbCap.textContent = chal ? chal.icon + ' ' + chal.text
+      : p.caption
+      || ((p.kind === 'video' || p.kind === 'message') && !p.hasOriginal
+        ? 'Aufnahme war zu gross fürs Hochladen – nur Vorschaubild.' : '');
     if (p.hasOriginal) {
       elLbDownload.classList.remove('hidden');
       elLbDownload.href = '/i/' + p.id + '-o.' + p.ext;

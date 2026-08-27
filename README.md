@@ -10,10 +10,11 @@ alles als ZIP.
 
 | URL | Zweck | Wer |
 |---|---|---|
-| `/` | Foto-Upload (QR-Code führt hierher) | alle Gäste |
-| `/show` | Fotowand im Vollbild | Beamer/TV-Rechner |
+| `/` | Foto-Upload und Foto-Aufgaben (QR-Code führt hierher) | alle Gäste |
+| `/show` | Fotowand im Vollbild | TV-/Beamer-Rechner |
+| `/box` | Erzählecke: Videobotschaften aufnehmen | Tablet in einer ruhigen Ecke |
 | `/galerie` | Galerie mit Download – gesperrt bis zur Freischaltung | alle Gäste, nach dem Fest |
-| `/mod#SCHLÜSSEL` | Moderation: Fotos ausblenden, Fotowand steuern, Galerie öffnen | Trauzeuge/in |
+| `/mod#SCHLÜSSEL` | Moderation: ausblenden, Fotowand steuern, Rückblick, Galerie öffnen | Trauzeuge/in |
 
 ## Wie es funktioniert
 
@@ -37,25 +38,83 @@ ihrem lokalen Pool weiter.
 **Fotowand-Logik:** Neue Fotos kommen in eine Highlight-Warteschlange
 (großes Bild, „Gerade eben von Anna", 12 s). Dazwischen läuft eine
 Ambient-Rotation mit gewichtetem Zufall: Neues wird bevorzugt, oft
-Gezeigtes tritt zurück, nichts wiederholt sich innerhalb von 10 Minuten.
-Ken-Burns-Effekt und unscharfer Hintergrund für Hochformat-Fotos inklusive.
+Gezeigtes tritt zurück. Gegen Wiederholungen sorgt ein **Ringpuffer**, dessen
+Größe sich am Foto-Pool orientiert (`min(Pool − 1, 8)`) – dadurch bleibt der
+Abstand auch bei einer kleinen Gesellschaft mit wenigen Fotos so groß wie
+möglich. Bei unter 12 Fotos stehen Bilder 10 statt 7 Sekunden, was ruhiger
+wirkt. Ken-Burns-Effekt und unscharfer Hintergrund für Hochformat inklusive.
+
+## Die Abendfunktionen
+
+**Foto-Aufgaben.** Acht Aufgaben stehen dauerhaft auf der Upload-Seite zum
+Abhaken („Jemand, der gerade lacht", „Die Hände deines Tischnachbarn" …).
+Aufgabe antippen, dann Foto wählen – die Zuordnung landet in der Datenbank
+und erscheint auf der Fotowand unter dem Bild. Definiert in
+[`public/js/challenges.js`](public/js/challenges.js); die `id` niemals
+nachträglich ändern, sonst verlieren bestehende Fotos ihre Zuordnung.
+Bei kleiner Gesellschaft sorgen die Aufgaben vor allem dafür, dass überhaupt
+genug Material zusammenkommt.
+
+**Namentliche Begrüssung.** Beim allerersten Beitrag eines Gastes blendet die
+Fotowand groß „Schön, dass du da bist, Werner!" ein. Der Server erkennt das
+selbst (`firstUpload` im SSE-Event) – nichts einzustellen.
+
+**Mitternachts-Rückblick.** Über die Moderation auslösbar. Der Server stellt
+aus `/api/recap` eine Auswahl zusammen: pro 15-Minuten-Fenster das
+aussagekräftigste Foto (Gruß und Foto-Aufgabe zählen), danach wird ergänzt,
+bis **jeder Gast mindestens einmal vorkommt** – bei einer kleinen Runde soll
+niemand fehlen. Die Wand spielt das chronologisch mit Uhrzeit-Marke ab
+(~6 s je Bild), zeigt dann die Auszeichnungen und endet mit einer Dankeskarte.
+Danach läuft die normale Fotowand weiter. Dauer: etwa 4–6 Minuten.
+
+**Auszeichnungen.** Werden aus der Datenbank berechnet und möglichst auf
+verschiedene Gäste verteilt, damit in kleiner Runde fast jeder einen Titel
+bekommt: 📸 Fleissigster Fotograf · 🌅 Der frühe Vogel · 🌙 Der Ausdauernde ·
+💬 Der Erzähler · 🎯 Der Aufgabenjäger · 🎙️ Die Stimme des Abends.
+
+**Erzählecke** (`/box`). Tablet oder Laptop in einer ruhigen Ecke. Namen
+eintragen, aufnehmen (max. 90 s), anschauen, absenden – oder nochmal. Die
+Aufnahme läuft durch dieselbe Warteschlange wie die Fotos: Standbild als
+Vorschau, Video als Original. Auf der Fotowand erscheint nur eine dezente
+Notiz („🎙️ Eine Botschaft von Werner"), **es wird kein Ton im Raum
+abgespielt**. Angeschaut werden die Botschaften in der Galerie.
+Braucht HTTPS – über `http://` verweigern Browser den Kamerazugriff.
+
+## Tests
+
+```bash
+npm test
+```
+
+Startet für jede Suite einen eigenen Server mit temporärem Datenverzeichnis
+und prüft 52 Punkte: Grundfunktionen (Upload, Moderation, Galerie, ZIP,
+Fehlerfälle), die Upload-Warteschlange inklusive nachgebautem iOS-Verhalten,
+und die Abendfunktionen. Vor jedem Deploy einmal laufen lassen.
 
 ## Projektstruktur
 
 ```
 server/           Node.js-Backend (Express, SQLite, SSE)
-  index.js        Routen: Upload, Feed, Stream, Moderation, ZIP, Health
-  db.js           SQLite-Schema und Zugriffe (better-sqlite3, WAL)
+  index.js        Routen: Upload, Feed, Stream, Moderation, Rückblick, ZIP, Health
+  db.js           SQLite-Schema, Migrationen und Zugriffe (better-sqlite3, WAL)
   sse.js          Event-Verteiler mit Nachhol-Logik
   ulid.js         Zeitlich sortierbare Foto-IDs
 public/           Frontend, reines HTML/CSS/JS ohne Build-Schritt
-  index.html      Upload-Seite         + js/upload.js, js/queue.js
-  show.html       Fotowand             + js/show.js
-  galerie.html    Galerie              + js/gallery.js
-  mod.html        Moderation           + js/mod.js
-scripts/          backup-pull.sh (Backup von zuhause holen)
+  index.html      Upload + Foto-Aufgaben  + js/upload.js, js/queue.js
+  show.html       Fotowand + Rückblick    + js/show.js
+  box.html        Erzählecke              + js/box.js
+  galerie.html    Galerie                 + js/gallery.js
+  mod.html        Moderation              + js/mod.js
+  js/challenges.js  Foto-Aufgaben, von mehreren Seiten genutzt
+scripts/
+  backup-pull.sh  Backup von zuhause holen
+  test/           Testsuiten (npm test)
 data/             entsteht zur Laufzeit: app.db + photos/ (nicht im Git)
 ```
+
+Das Datenbankschema wird beim Start automatisch nachgezogen (`ensureColumn`
+in `db.js`) – ein Update auf einer bestehenden Installation braucht keine
+Handarbeit, vorhandene Fotos bleiben erhalten.
 
 Gespeicherte Dateien pro Foto: `photos/{id}-d.jpg` (Anzeige),
 `{id}-t.jpg` (Thumbnail), `{id}-o.{ext}` (Original, sobald hochgeladen).
@@ -186,6 +245,7 @@ gespeichert und aus der URL entfernt. Funktionen:
   (nichts wird gelöscht; nochmal antippen macht es rückgängig)
 - **Pause** → Fotowand friert ein (für Reden). **Weiter** → läuft weiter
 - **Ruhe-Modus** → keine Highlight-Unterbrechungen, Rotation läuft ruhig weiter
+- **Rückblick starten** → Mitternachts-Rückblick mit Auszeichnungen (4–6 min)
 - **Galerie öffnen/schliessen** → schaltet `/galerie` für alle frei
 - **Fotowand neu laden** → nach einem Update
 
@@ -228,8 +288,12 @@ anlegen, gesichertes `data/` nach `/opt/hochzeit/app/data/` kopieren,
 
 ## Checkliste vor dem Fest
 
-- [ ] **Generalprobe ~2 Wochen vorher** in der Location: 5 echte Handys
+- [ ] `npm test` läuft grün
+- [ ] **Generalprobe ~2 Wochen vorher** in der Location: echte Handys
       (mind. 1 iPhone, 1 Android), Upload + Fotowand + Moderation testen
+- [ ] Rückblick einmal komplett durchlaufen lassen (dauert 4–6 min)
+- [ ] Erzählecke: Kamera- und Mikrofonfreigabe auf dem Tablet erteilt,
+      Netzstecker dran, eine Probeaufnahme gemacht
 - [ ] Mobilfunk-Empfang aller grossen Netze in der Location messen
       (Upload-Speedtest, nicht nur Balken)
 - [ ] Beamer-Rechner: Kiosk-Autostart, Ruhezustand aus, Ton aus
@@ -254,6 +318,9 @@ anlegen, gesichertes `data/` nach `/opt/hochzeit/app/data/` kopieren,
 | „wartet auf Netz" hängt ewig | Handy hat Captive-Portal-WLAN ohne Internet → Mobilfunk nutzen. Seite offen lassen, Queue sendet automatisch nach |
 | HEIC-Foto schlägt auf Android fehl | Android-Chrome kann HEIC nicht dekodieren (iPhone-Fotos via Messenger). Betroffene Gäste: Foto stattdessen aus der Kamera-App teilen |
 | iPhone bleibt bei „Original folgt …", Log zeigt `laenge=0` | Behoben. iOS Safari konnte die `File`-Referenz nicht aus IndexedDB zurückgeben. Die Warteschlange materialisiert die Bytes jetzt vor dem Speichern (`MATERIALIZE_MAX` in `queue.js`) |
+| Erzählecke zeigt „Kamera nicht verfügbar" | Seite muss über **HTTPS** laufen (`localhost` ist ausgenommen). Sonst: Kamerafreigabe im Browser erteilt? Nutzt eine andere App gerade die Kamera? |
+| Rückblick zeigt nur wenige Fotos | Normal bei wenigen Uploads – gewählt wird eines je 15-Minuten-Fenster plus je ein Foto pro Gast. Fenstergrösse: `BUCKET` in `buildRecap` (`server/index.js`) |
+| Fotowand wiederholt sich trotzdem | Passiert nur, wenn insgesamt sehr wenige Fotos da sind – der Ringpuffer kann nicht mehr Abstand schaffen als Bilder vorhanden sind |
 | Platte läuft voll | `df -h`; Volume in Hetzner-Konsole anhängen, in compose als zusätzlichen Mount für `./data` nutzen |
 | Galerie-ZIP bricht ab | Bei sehr grossen Sammlungen Browser-Download-Timeout – einzelne Tage/Gäste laden oder ZIP per `curl -O` ziehen |
 

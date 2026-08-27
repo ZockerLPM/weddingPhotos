@@ -8,7 +8,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "test": "node scripts/test/run.mjs"
   },
   "dependencies": {
     "archiver": "^7.0.1",

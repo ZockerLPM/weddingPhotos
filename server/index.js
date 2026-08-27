@@ -67,6 +67,7 @@ function rowToPublic(r) {
     uploader: r.uploader,
     kind: r.kind,
     caption: r.caption || '',
+    challengeId: r.challenge_id || null,
     w: r.width,
     h: r.height,
     takenAt: r.taken_at,
@@ -117,14 +118,21 @@ app.post('/api/upload', upSmall.fields([
   const existing = db.byClientId(clientId);
   if (existing) return res.json({ id: existing.id, existed: true });
 
+  // Vor dem Einfügen prüfen: ist das der allererste Beitrag dieser Person?
+  // Daraus wird auf der Fotowand die namentliche Begrüssung.
+  const firstUpload = db.countByUploader(uploader) === 0;
+
   const id = ulid();
+  const kind = ['photo', 'video', 'message'].includes(req.body.kind)
+    ? req.body.kind : 'photo';
   const row = {
     id,
     clientId,
     uploader,
     deviceId: str(req.body.deviceId, 64),
-    kind: req.body.kind === 'video' ? 'video' : 'photo',
+    kind,
     caption: str(req.body.caption, 200) || null,
+    challengeId: str(req.body.challengeId, 40) || null,
     width: intOr(req.body.w, null),
     height: intOr(req.body.h, null),
     takenAt: intOr(req.body.takenAt, Date.now()),
@@ -135,7 +143,7 @@ app.post('/api/upload', upSmall.fields([
   await fsp.writeFile(path.join(db.dirs.photos, `${id}-t.jpg`), thumb.buffer);
   db.insertPhoto(row);
 
-  sse.emit('photo', rowToPublic(db.byId(id)));
+  sse.emit('photo', { ...rowToPublic(db.byId(id)), firstUpload });
   res.json({ id, existed: false });
 });
 
@@ -181,6 +189,77 @@ app.get('/api/stats', (req, res) => {
 
 app.get('/api/stream', (req, res) => sse.handle(req, res));
 
+// ---------------------------------------------------------------- Rückblick
+
+// Kuratierte Auswahl für den Mitternachts-Rückblick: pro Zeitfenster das
+// aussagekräftigste Foto, danach garantiert jeder Gast mindestens einmal.
+function buildRecap(limit = 40) {
+  const all = db.listForRecap();
+  if (!all.length) return [];
+
+  const BUCKET = 15 * 60 * 1000;
+  const best = new Map();
+  for (const p of all) {
+    const key = Math.floor((p.taken_at || p.uploaded_at) / BUCKET);
+    const score = (p.caption ? 2 : 0) + (p.challenge_id ? 1 : 0);
+    const cur = best.get(key);
+    if (!cur || score > cur.score) best.set(key, { p, score });
+  }
+  let picked = [...best.values()].map(x => x.p);
+
+  // Bei einer kleinen Gesellschaft zählt jeder – niemand fehlt im Rückblick.
+  const seen = new Set(picked.map(p => p.uploader));
+  for (const p of all) {
+    if (!seen.has(p.uploader)) { picked.push(p); seen.add(p.uploader); }
+  }
+
+  picked.sort((a, b) => a.id.localeCompare(b.id));
+  if (picked.length > limit) {
+    const step = picked.length / limit;
+    const thinned = [];
+    for (let i = 0; i < limit; i++) thinned.push(picked[Math.floor(i * step)]);
+    picked = thinned;
+  }
+  return picked.map(rowToPublic);
+}
+
+// Auszeichnungen. Titel werden möglichst auf verschiedene Gäste verteilt,
+// damit bei kleiner Runde fast jeder einen bekommt.
+function buildAwards() {
+  const rows = db.awardStats();
+  if (!rows.length) return [];
+  const used = new Set();
+
+  const give = (icon, title, rank, detail) => {
+    const cands = rows.filter(r => rank(r) !== null).sort((a, b) => rank(b) - rank(a));
+    if (!cands.length) return;
+    const win = cands.find(c => !used.has(c.uploader)) || cands[0];
+    used.add(win.uploader);
+    out.push({ icon, title, who: win.uploader, detail: detail(win) });
+  };
+
+  const out = [];
+  give('📸', 'Fleissigster Fotograf', r => (r.total > 0 ? r.total : null),
+    r => `${r.total} Beiträge`);
+  give('🌅', 'Der frühe Vogel', r => (r.first_at ? -r.first_at : null),
+    r => 'erstes Foto um ' + new Date(r.first_at).toLocaleTimeString('de-AT',
+      { hour: '2-digit', minute: '2-digit' }));
+  give('🌙', 'Der Ausdauernde', r => (r.last_at ? r.last_at : null),
+    r => 'letztes Foto um ' + new Date(r.last_at).toLocaleTimeString('de-AT',
+      { hour: '2-digit', minute: '2-digit' }));
+  give('💬', 'Der Erzähler', r => (r.captions > 0 ? r.captions : null),
+    r => `${r.captions} Grüsse geschrieben`);
+  give('🎯', 'Der Aufgabenjäger', r => (r.challenges > 0 ? r.challenges : null),
+    r => `${r.challenges} Foto-Aufgaben erfüllt`);
+  give('🎙️', 'Die Stimme des Abends', r => (r.messages > 0 ? r.messages : null),
+    r => `${r.messages} Botschaften hinterlassen`);
+  return out;
+}
+
+app.get('/api/recap', (req, res) => {
+  res.json({ photos: buildRecap(), awards: buildAwards() });
+});
+
 app.get('/api/health', async (req, res) => {
   const out = { ok: true, db: false, disk: null, photos: 0, sseClients: sse.clientCount() };
   try {
@@ -217,11 +296,14 @@ app.post('/api/mod/control', modAuth, (req, res) => {
   if (a === 'pause') db.setSetting('paused', '1');
   else if (a === 'resume') db.setSetting('paused', '0');
   else if (a === 'mode') db.setSetting('mode', req.body.mode === 'quiet' ? 'quiet' : 'normal');
-  else if (a !== 'skip' && a !== 'reload') return res.status(400).json({ error: 'unbekannte Aktion' });
+  else if (!['skip', 'reload', 'recap'].includes(a)) {
+    return res.status(400).json({ error: 'unbekannte Aktion' });
+  }
 
   const payload = { ...fullState() };
   if (a === 'skip') payload.skip = 1;
   if (a === 'reload') payload.reload = 1;
+  if (a === 'recap') payload.recap = 1;
   sse.emit('control', payload);
   res.json({ ok: true, state: fullState() });
 });

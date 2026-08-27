@@ -24,6 +24,7 @@ db.exec(`
     device_id     TEXT NOT NULL DEFAULT '',
     kind          TEXT NOT NULL DEFAULT 'photo',
     caption       TEXT,
+    challenge_id  TEXT,
     width         INTEGER,
     height        INTEGER,
     taken_at      INTEGER,
@@ -47,6 +48,17 @@ db.exec(`
   );
 `);
 
+// Schema-Nachrüstung: CREATE TABLE IF NOT EXISTS lässt bestehende Tabellen
+// unangetastet, neue Spalten müssen daher einzeln ergänzt werden.
+function ensureColumn(table, column, definition) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some(c => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    console.log(`Datenbank ergänzt: ${table}.${column}`);
+  }
+}
+ensureColumn('photos', 'challenge_id', 'TEXT');
+
 // Standardwerte, nur beim ersten Start.
 db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('paused', '0')`).run();
 db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('mode', 'normal')`).run();
@@ -55,9 +67,9 @@ db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('gallery_open', 
 const stmt = {
   insertPhoto: db.prepare(`
     INSERT INTO photos (id, client_id, uploader, device_id, kind, caption,
-                        width, height, taken_at, uploaded_at)
+                        challenge_id, width, height, taken_at, uploaded_at)
     VALUES (@id, @clientId, @uploader, @deviceId, @kind, @caption,
-            @width, @height, @takenAt, @uploadedAt)`),
+            @challengeId, @width, @height, @takenAt, @uploadedAt)`),
   byClientId: db.prepare(`SELECT * FROM photos WHERE client_id = ?`),
   byId: db.prepare(`SELECT * FROM photos WHERE id = ?`),
   markOriginal: db.prepare(
@@ -70,6 +82,23 @@ const stmt = {
     `SELECT COUNT(*) AS count, COUNT(DISTINCT uploader) AS uploaders
      FROM photos WHERE hidden = 0`),
   countHidden: db.prepare(`SELECT COUNT(*) AS n FROM photos WHERE hidden = 1`),
+  countByUploader: db.prepare(`SELECT COUNT(*) AS n FROM photos WHERE uploader = ?`),
+  // Rückblick: nur echte Bilder, chronologisch (ULID = Upload-Reihenfolge).
+  listForRecap: db.prepare(
+    `SELECT * FROM photos
+     WHERE hidden = 0 AND kind IN ('photo', 'video')
+     ORDER BY id ASC LIMIT 5000`),
+  // Grundlage für die Auszeichnungen am Ende des Abends.
+  awardStats: db.prepare(`
+    SELECT uploader,
+           COUNT(*) AS total,
+           SUM(CASE WHEN caption IS NOT NULL AND caption != '' THEN 1 ELSE 0 END) AS captions,
+           COUNT(DISTINCT challenge_id) AS challenges,
+           SUM(CASE WHEN kind = 'message' THEN 1 ELSE 0 END) AS messages,
+           MIN(COALESCE(taken_at, uploaded_at)) AS first_at,
+           MAX(COALESCE(taken_at, uploaded_at)) AS last_at
+    FROM photos WHERE hidden = 0
+    GROUP BY uploader`),
   getSetting: db.prepare(`SELECT value FROM settings WHERE key = ?`),
   setSetting: db.prepare(
     `INSERT INTO settings (key, value) VALUES (?, ?)
@@ -90,6 +119,9 @@ export function listVisible() { return stmt.listVisible.all(); }
 export function listRecent(limit = 300) { return stmt.listRecent.all(limit); }
 export function counts() { return stmt.counts.get(); }
 export function countHidden() { return stmt.countHidden.get().n; }
+export function countByUploader(name) { return stmt.countByUploader.get(name).n; }
+export function listForRecap() { return stmt.listForRecap.all(); }
+export function awardStats() { return stmt.awardStats.all(); }
 export function getSetting(key) { return stmt.getSetting.get(key)?.value; }
 export function setSetting(key, value) { stmt.setSetting.run(key, String(value)); }
 export function addEvent(type, payload) {
