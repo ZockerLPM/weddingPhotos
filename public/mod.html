@@ -22,12 +22,28 @@
     <button class="btn" id="btnQuiet">🤫 Ruhe-Modus</button>
     <button class="btn" id="btnGallery">🔒 Galerie</button>
     <button class="btn" id="btnRecap">🌙 Rückblick starten</button>
+    <button class="btn" id="btnEditChal">🎯 Aufgaben bearbeiten</button>
     <button class="btn danger" id="btnReload">🔄 Fotowand neu laden</button>
   </div>
+
+  <section class="editor hidden" id="chalEditor">
+    <h2>🎯 Foto-Aufgaben</h2>
+    <p class="hint-left">Text und Symbol frei änderbar. Änderungen erscheinen
+      sofort auf allen Gästehandys. Bereits hochgeladene Fotos behalten ihre
+      Zuordnung, auch wenn du den Text änderst.</p>
+    <ul class="chal-edit" id="chalRows"></ul>
+    <div class="editor-actions">
+      <button class="btn" id="btnAddChal">＋ Aufgabe</button>
+      <button class="btn" id="btnResetChal">↺ Standard</button>
+      <button class="btn primary" id="btnSaveChal">Speichern</button>
+    </div>
+    <p class="status" id="chalStatus"></p>
+  </section>
 
   <div class="grid" id="grid"></div>
 </div>
 
+<script src="/js/challenges.js"></script>
 <script src="/js/mod.js"></script>
 </body>
 </html>

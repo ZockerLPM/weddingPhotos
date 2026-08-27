@@ -113,6 +113,51 @@ input[type="text"]:focus {
   margin: 4px 0 14px;
 }
 
+/* Aufgaben-Editor in der Moderation */
+.editor {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.editor h2 { font-size: 1.05rem; margin: 0 0 6px; }
+.hint-left { color: var(--muted); font-size: .82rem; margin: 0 0 12px; }
+
+.chal-edit { list-style: none; margin: 0 0 12px; padding: 0; }
+
+.chal-edit li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.chal-edit input.icon {
+  width: 3.2rem;
+  flex: none;
+  text-align: center;
+  padding: 10px 4px;
+}
+
+.chal-edit input.text { flex: 1; min-width: 0; }
+
+.chal-edit .del {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--err);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 6px 8px;
+}
+
+.editor-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.status { text-align: center; color: var(--muted); min-height: 1.3em; margin: 10px 0 0; }
+.status.ok { color: var(--ok); }
+.status.err { color: var(--err); }
+
 /* Foto-Aufgaben */
 .chal-head {
   display: flex;

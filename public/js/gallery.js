@@ -25,39 +25,63 @@
     });
   }
 
+  function heading(text) {
+    var h = document.createElement('div');
+    h.className = 'datehead';
+    h.textContent = text;
+    elGrid.appendChild(h);
+  }
+
+  function tileFor(p, index) {
+    var tile = document.createElement('div');
+    tile.className = 'tile';
+    var img = document.createElement('img');
+    img.loading = 'lazy';
+    img.src = '/i/' + p.id + '-t.jpg';
+    img.alt = 'Foto von ' + p.uploader;
+    tile.appendChild(img);
+    if (p.kind === 'video' || p.kind === 'message') {
+      var v = document.createElement('span');
+      v.className = 'vid';
+      v.textContent = p.kind === 'message' ? '🎙️' : '🎬';
+      tile.appendChild(v);
+    }
+    tile.addEventListener('click', function () { openLb(index); });
+    elGrid.appendChild(tile);
+  }
+
   function render() {
     var who = elFilter.value;
-    filtered = who
+    var pick = who
       ? photos.filter(function (p) { return p.uploader === who; })
       : photos.slice();
 
+    // Mitgebrachte Altfotos ans Ende, sonst zerreissen ihre alten
+    // Aufnahmedaten die Zeitachse des Festes.
+    var abend = pick.filter(function (p) { return !p.archive; })
+      .sort(function (a, b) {
+        return (a.effectiveAt || a.uploadedAt) - (b.effectiveAt || b.uploadedAt);
+      });
+    var frueher = pick.filter(function (p) { return p.archive; })
+      .sort(function (a, b) {
+        return (a.takenAt || a.uploadedAt) - (b.takenAt || b.uploadedAt);
+      });
+
+    // filtered bestimmt die Reihenfolge in der Lightbox.
+    filtered = abend.concat(frueher);
+
     elGrid.textContent = '';
     var lastDay = '';
-    filtered.forEach(function (p, i) {
-      var day = fmtDay(p.takenAt || p.uploadedAt);
-      if (day !== lastDay) {
-        lastDay = day;
-        var h = document.createElement('div');
-        h.className = 'datehead';
-        h.textContent = day;
-        elGrid.appendChild(h);
-      }
-      var tile = document.createElement('div');
-      tile.className = 'tile';
-      var img = document.createElement('img');
-      img.loading = 'lazy';
-      img.src = '/i/' + p.id + '-t.jpg';
-      img.alt = 'Foto von ' + p.uploader;
-      tile.appendChild(img);
-      if (p.kind === 'video' || p.kind === 'message') {
-        var v = document.createElement('span');
-        v.className = 'vid';
-        v.textContent = p.kind === 'message' ? '🎙️' : '🎬';
-        tile.appendChild(v);
-      }
-      tile.addEventListener('click', function () { openLb(i); });
-      elGrid.appendChild(tile);
+    abend.forEach(function (p, i) {
+      var day = fmtDay(p.effectiveAt || p.uploadedAt);
+      if (day !== lastDay) { lastDay = day; heading(day); }
+      tileFor(p, i);
     });
+
+    if (frueher.length) {
+      heading('📼 Mitgebracht von früher');
+      frueher.forEach(function (p, i) { tileFor(p, abend.length + i); });
+    }
   }
 
   function openLb(i) {
@@ -79,8 +103,14 @@
       elLbMedia.appendChild(img);
     }
 
-    elLbWho.textContent = (p.kind === 'message' ? '🎙️ Botschaft von ' : 'von ') + p.uploader;
-    var chal = window.challengeById && window.challengeById(p.challengeId);
+    var lead = p.kind === 'message' ? '🎙️ Botschaft von ' : 'von ';
+    var when = '';
+    if (p.archive && p.takenAt) {
+      when = ' · 📼 aufgenommen ' + new Date(p.takenAt)
+        .toLocaleDateString('de-AT', { month: 'long', year: 'numeric' });
+    }
+    elLbWho.textContent = lead + p.uploader + when;
+    var chal = Challenges.byId(p.challengeId);
     elLbCap.textContent = chal ? chal.icon + ' ' + chal.text
       : p.caption
       || ((p.kind === 'video' || p.kind === 'message') && !p.hasOriginal
@@ -126,6 +156,7 @@
         elLock.classList.remove('hidden');
         return;
       }
+      Challenges.adopt(f.challenges);
       photos = f.photos;
       elContent.classList.remove('hidden');
       elSub.textContent = f.count + ' Fotos von ' + f.uploaders + ' Gästen';

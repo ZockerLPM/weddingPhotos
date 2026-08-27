@@ -58,6 +58,27 @@ function ensureColumn(table, column, definition) {
   }
 }
 ensureColumn('photos', 'challenge_id', 'TEXT');
+// Mitgebrachte Altfotos (Kinderbilder o.ä.) tragen ein Aufnahmedatum aus
+// den Metadaten, das Jahrzehnte zurückliegen kann. archive markiert sie,
+// effective_at ist der Zeitpunkt, der für Reihenfolge und Auszeichnungen
+// zählt: das echte Aufnahmedatum, wenn es plausibel ist, sonst der Upload.
+ensureColumn('photos', 'archive', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('photos', 'effective_at', 'INTEGER');
+
+// Bestandsdaten nachziehen (36 h Fenster, 1 h Toleranz nach vorne).
+db.exec(`
+  UPDATE photos SET
+    archive = CASE
+      WHEN taken_at IS NOT NULL
+       AND (uploaded_at - taken_at > 129600000 OR taken_at - uploaded_at > 3600000)
+      THEN 1 ELSE 0 END,
+    effective_at = CASE
+      WHEN taken_at IS NULL
+        OR uploaded_at - taken_at > 129600000
+        OR taken_at - uploaded_at > 3600000
+      THEN uploaded_at ELSE taken_at END
+  WHERE effective_at IS NULL
+`);
 
 // Standardwerte, nur beim ersten Start.
 db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('paused', '0')`).run();
@@ -67,9 +88,11 @@ db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('gallery_open', 
 const stmt = {
   insertPhoto: db.prepare(`
     INSERT INTO photos (id, client_id, uploader, device_id, kind, caption,
-                        challenge_id, width, height, taken_at, uploaded_at)
+                        challenge_id, width, height, taken_at, uploaded_at,
+                        archive, effective_at)
     VALUES (@id, @clientId, @uploader, @deviceId, @kind, @caption,
-            @challengeId, @width, @height, @takenAt, @uploadedAt)`),
+            @challengeId, @width, @height, @takenAt, @uploadedAt,
+            @archive, @effectiveAt)`),
   byClientId: db.prepare(`SELECT * FROM photos WHERE client_id = ?`),
   byId: db.prepare(`SELECT * FROM photos WHERE id = ?`),
   markOriginal: db.prepare(
@@ -83,20 +106,26 @@ const stmt = {
      FROM photos WHERE hidden = 0`),
   countHidden: db.prepare(`SELECT COUNT(*) AS n FROM photos WHERE hidden = 1`),
   countByUploader: db.prepare(`SELECT COUNT(*) AS n FROM photos WHERE uploader = ?`),
-  // Rückblick: nur echte Bilder, chronologisch (ULID = Upload-Reihenfolge).
+  // Rückblick: Bilder des Abends, chronologisch nach effective_at.
   listForRecap: db.prepare(
     `SELECT * FROM photos
-     WHERE hidden = 0 AND kind IN ('photo', 'video')
-     ORDER BY id ASC LIMIT 5000`),
+     WHERE hidden = 0 AND kind IN ('photo', 'video') AND archive = 0
+     ORDER BY effective_at ASC, id ASC LIMIT 5000`),
+  // Mitgebrachte Altfotos für den Vorspann des Rückblicks.
+  listArchive: db.prepare(
+    `SELECT * FROM photos
+     WHERE hidden = 0 AND kind IN ('photo', 'video') AND archive = 1
+     ORDER BY COALESCE(taken_at, uploaded_at) ASC LIMIT 200`),
   // Grundlage für die Auszeichnungen am Ende des Abends.
   awardStats: db.prepare(`
     SELECT uploader,
-           COUNT(*) AS total,
+           SUM(CASE WHEN archive = 0 THEN 1 ELSE 0 END) AS total,
+           SUM(CASE WHEN archive = 1 THEN 1 ELSE 0 END) AS archives,
            SUM(CASE WHEN caption IS NOT NULL AND caption != '' THEN 1 ELSE 0 END) AS captions,
            COUNT(DISTINCT challenge_id) AS challenges,
            SUM(CASE WHEN kind = 'message' THEN 1 ELSE 0 END) AS messages,
-           MIN(COALESCE(taken_at, uploaded_at)) AS first_at,
-           MAX(COALESCE(taken_at, uploaded_at)) AS last_at
+           MIN(CASE WHEN archive = 0 THEN effective_at END) AS first_at,
+           MAX(CASE WHEN archive = 0 THEN effective_at END) AS last_at
     FROM photos WHERE hidden = 0
     GROUP BY uploader`),
   getSetting: db.prepare(`SELECT value FROM settings WHERE key = ?`),
@@ -121,6 +150,7 @@ export function counts() { return stmt.counts.get(); }
 export function countHidden() { return stmt.countHidden.get().n; }
 export function countByUploader(name) { return stmt.countByUploader.get(name).n; }
 export function listForRecap() { return stmt.listForRecap.all(); }
+export function listArchive() { return stmt.listArchive.all(); }
 export function awardStats() { return stmt.awardStats.all(); }
 export function getSetting(key) { return stmt.getSetting.get(key)?.value; }
 export function setSetting(key, value) { stmt.setSetting.run(key, String(value)); }

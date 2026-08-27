@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { ulid } from './ulid.js';
 import * as db from './db.js';
 import * as sse from './sse.js';
+import { DEFAULT_CHALLENGES, sanitizeChallenges } from './challenges.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -68,6 +69,8 @@ function rowToPublic(r) {
     kind: r.kind,
     caption: r.caption || '',
     challengeId: r.challenge_id || null,
+    archive: !!r.archive,
+    effectiveAt: r.effective_at || r.uploaded_at,
     w: r.width,
     h: r.height,
     takenAt: r.taken_at,
@@ -75,6 +78,35 @@ function rowToPublic(r) {
     hasOriginal: !!r.has_original,
     ext: r.ext_original || null,
   };
+}
+
+// Ein mitgebrachtes Kinderbild trägt ein Aufnahmedatum von vor 30 Jahren.
+// Solche Fotos sollen die Reihenfolge des Abends und die Auszeichnungen
+// nicht verfälschen – sie bekommen als Zeitpunkt den Upload und ein
+// eigenes Kennzeichen.
+const ARCHIVE_BEFORE_MS = 36 * 3600 * 1000;  // älter als 36 h vor dem Upload
+const CLOCK_SKEW_MS = 3600 * 1000;           // Handyuhr darf 1 h vorgehen
+
+function classifyTime(takenAt, uploadedAt) {
+  const isArchive = !takenAt
+    || uploadedAt - takenAt > ARCHIVE_BEFORE_MS
+    || takenAt - uploadedAt > CLOCK_SKEW_MS;
+  return {
+    archive: isArchive && !!takenAt ? 1 : 0,
+    effectiveAt: isArchive ? uploadedAt : takenAt,
+  };
+}
+
+// Aufgabenliste aus den Einstellungen, mit Rückfall auf die Standardliste.
+function getChallenges() {
+  try {
+    const raw = db.getSetting('challenges');
+    if (raw) {
+      const parsed = sanitizeChallenges(JSON.parse(raw));
+      if (parsed && parsed.length) return parsed;
+    }
+  } catch { /* kaputter Eintrag -> Standard */ }
+  return DEFAULT_CHALLENGES;
 }
 
 function sanitizeExt(name) {
@@ -125,6 +157,9 @@ app.post('/api/upload', upSmall.fields([
   const id = ulid();
   const kind = ['photo', 'video', 'message'].includes(req.body.kind)
     ? req.body.kind : 'photo';
+  const uploadedAt = Date.now();
+  const takenAt = intOr(req.body.takenAt, null);
+  const when = classifyTime(takenAt, uploadedAt);
   const row = {
     id,
     clientId,
@@ -135,8 +170,10 @@ app.post('/api/upload', upSmall.fields([
     challengeId: str(req.body.challengeId, 40) || null,
     width: intOr(req.body.w, null),
     height: intOr(req.body.h, null),
-    takenAt: intOr(req.body.takenAt, Date.now()),
-    uploadedAt: Date.now(),
+    takenAt: takenAt,
+    uploadedAt,
+    archive: when.archive,
+    effectiveAt: when.effectiveAt,
   };
 
   await fsp.writeFile(path.join(db.dirs.photos, `${id}-d.jpg`), display.buffer);
@@ -179,6 +216,7 @@ app.get('/api/feed', (req, res) => {
     ...fullState(),
     count: c.count,
     uploaders: c.uploaders,
+    challenges: getChallenges(),
     photos: db.listVisible().map(rowToPublic),
   });
 });
@@ -189,10 +227,39 @@ app.get('/api/stats', (req, res) => {
 
 app.get('/api/stream', (req, res) => sse.handle(req, res));
 
+app.get('/api/challenges', (req, res) => {
+  res.json({ challenges: getChallenges() });
+});
+
+app.post('/api/mod/challenges', modAuth, (req, res) => {
+  const list = sanitizeChallenges(req.body.challenges);
+  if (!list) return res.status(400).json({ error: 'Liste erwartet' });
+  db.setSetting('challenges', JSON.stringify(list));
+  sse.emit('challenges', { challenges: list });
+  res.json({ ok: true, challenges: list });
+});
+
+app.post('/api/mod/challenges/reset', modAuth, (req, res) => {
+  db.setSetting('challenges', JSON.stringify(DEFAULT_CHALLENGES));
+  sse.emit('challenges', { challenges: DEFAULT_CHALLENGES });
+  res.json({ ok: true, challenges: DEFAULT_CHALLENGES });
+});
+
 // ---------------------------------------------------------------- Rückblick
 
 // Kuratierte Auswahl für den Mitternachts-Rückblick: pro Zeitfenster das
 // aussagekräftigste Foto, danach garantiert jeder Gast mindestens einmal.
+// Mitgebrachte Altfotos eröffnen den Rückblick als kurzer Vorspann
+// "Von früher" – aus dem Zeitstempel-Problem wird so ein eigenes Kapitel.
+function buildArchiveIntro(limit = 8) {
+  const rows = db.listArchive();
+  if (rows.length <= limit) return rows.map(rowToPublic);
+  const step = rows.length / limit;
+  const out = [];
+  for (let i = 0; i < limit; i++) out.push(rows[Math.floor(i * step)]);
+  return out.map(rowToPublic);
+}
+
 function buildRecap(limit = 40) {
   const all = db.listForRecap();
   if (!all.length) return [];
@@ -200,7 +267,7 @@ function buildRecap(limit = 40) {
   const BUCKET = 15 * 60 * 1000;
   const best = new Map();
   for (const p of all) {
-    const key = Math.floor((p.taken_at || p.uploaded_at) / BUCKET);
+    const key = Math.floor((p.effective_at || p.uploaded_at) / BUCKET);
     const score = (p.caption ? 2 : 0) + (p.challenge_id ? 1 : 0);
     const cur = best.get(key);
     if (!cur || score > cur.score) best.set(key, { p, score });
@@ -213,7 +280,9 @@ function buildRecap(limit = 40) {
     if (!seen.has(p.uploader)) { picked.push(p); seen.add(p.uploader); }
   }
 
-  picked.sort((a, b) => a.id.localeCompare(b.id));
+  picked.sort((a, b) =>
+    (a.effective_at || a.uploaded_at) - (b.effective_at || b.uploaded_at)
+    || a.id.localeCompare(b.id));
   if (picked.length > limit) {
     const step = picked.length / limit;
     const thinned = [];
@@ -240,7 +309,9 @@ function buildAwards() {
 
   const out = [];
   give('📸', 'Fleissigster Fotograf', r => (r.total > 0 ? r.total : null),
-    r => `${r.total} Beiträge`);
+    r => `${r.total} Fotos vom Fest`);
+  give('📼', 'Der Archivar', r => (r.archives > 0 ? r.archives : null),
+    r => `${r.archives} Bilder von früher mitgebracht`);
   give('🌅', 'Der frühe Vogel', r => (r.first_at ? -r.first_at : null),
     r => 'erstes Foto um ' + new Date(r.first_at).toLocaleTimeString('de-AT',
       { hour: '2-digit', minute: '2-digit' }));
@@ -257,7 +328,11 @@ function buildAwards() {
 }
 
 app.get('/api/recap', (req, res) => {
-  res.json({ photos: buildRecap(), awards: buildAwards() });
+  res.json({
+    archive: buildArchiveIntro(),
+    photos: buildRecap(),
+    awards: buildAwards(),
+  });
 });
 
 app.get('/api/health', async (req, res) => {

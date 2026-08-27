@@ -117,7 +117,7 @@
     var weights = [];
     var total = 0;
     fresh.forEach(function (p) {
-      var ageMin = (now - (p.takenAt || p.uploadedAt)) / 60000;
+      var ageMin = (now - (p.effectiveAt || p.uploadedAt)) / 60000;
       var recency = 1 + 3 * Math.exp(-ageMin / 45);       // Neues zählt mehr
       var fatigue = 1 / (1 + (shownCounts[p.id] || 0));   // oft Gezeigtes weniger
       var w = recency * fatigue;
@@ -153,10 +153,12 @@
     } else if (kind === 'highlight') {
       var s = document.createElement('b');
       s.textContent = photo.uploader;
-      elBadge.appendChild(document.createTextNode(
-        (photo.kind === 'video' ? '🎬 ' : '✨ ') + 'Gerade eben von '));
+      var lead = photo.archive
+        ? '📼 Von früher, mitgebracht von '
+        : (photo.kind === 'video' ? '🎬 ' : '✨ ') + 'Gerade eben von ';
+      elBadge.appendChild(document.createTextNode(lead));
       elBadge.appendChild(s);
-      var chal = window.challengeById && window.challengeById(photo.challengeId);
+      var chal = Challenges.byId(photo.challengeId);
       if (chal) {
         var c = document.createElement('span');
         c.className = 'cap';
@@ -282,22 +284,53 @@
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (!alive()) return;
+        var archive = data.archive || [];
         var photos = data.photos || [];
         var awards = data.awards || [];
 
-        var chain = showCard('🌙', 'Unser Abend', 'in Bildern', '', 5000);
-
-        photos.forEach(function (p) {
-          chain = chain.then(function () {
+        // Ein Bild eine Weile stehen lassen und dabei den Namen einblenden.
+        function playOne(p, clockText) {
+          return function () {
             if (!alive()) return;
-            elClock.textContent = fmtTime(p.takenAt || p.uploadedAt);
-            elClock.classList.add('on');
+            if (clockText) {
+              elClock.textContent = clockText;
+              elClock.classList.add('on');
+            } else {
+              elClock.classList.remove('on');
+            }
             return display(p, null, RECAP_PHOTO_MS).then(function () {
               elCredit.textContent = 'von ' + p.uploader;
               elCredit.style.opacity = '1';
               return sleep(RECAP_PHOTO_MS);
             });
+          };
+        }
+
+        var chain = Promise.resolve();
+
+        // Mitgebrachte Altfotos eröffnen als eigenes Kapitel.
+        if (archive.length) {
+          chain = chain
+            .then(function () {
+              if (!alive()) return;
+              return showCard('📼', 'Von früher', '', 'was ihr mitgebracht habt', 5000);
+            });
+          archive.forEach(function (p) {
+            var when = p.takenAt
+              ? new Date(p.takenAt).toLocaleDateString('de-AT',
+                  { month: 'long', year: 'numeric' })
+              : '';
+            chain = chain.then(playOne(p, when));
           });
+        }
+
+        chain = chain.then(function () {
+          if (!alive()) return;
+          return showCard('🌙', 'Unser Abend', 'in Bildern', '', 5000);
+        });
+
+        photos.forEach(function (p) {
+          chain = chain.then(playOne(p, fmtTime(p.effectiveAt || p.uploadedAt)));
         });
 
         chain = chain.then(function () {
@@ -378,6 +411,9 @@
     es.addEventListener('photo', function (e) { onPhoto(JSON.parse(e.data)); });
     es.addEventListener('hide', function (e) { onHide(JSON.parse(e.data)); });
     es.addEventListener('control', function (e) { onControl(JSON.parse(e.data)); });
+    es.addEventListener('challenges', function (e) {
+      Challenges.adopt(JSON.parse(e.data).challenges);
+    });
 
     es.onerror = function () {
       hadError = true;
@@ -399,6 +435,7 @@
       .then(function (f) {
         pool.clear();
         f.photos.forEach(function (p) { pool.set(p.id, p); });
+        Challenges.adopt(f.challenges);
         mode = f.mode || 'normal';
         paused = !!f.paused;
         elPaused.classList.toggle('on', paused);

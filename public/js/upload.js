@@ -38,7 +38,7 @@
       elPickHint.textContent = 'Zuerst oben deinen Vornamen eintragen 🙂';
       return;
     }
-    var c = window.challengeById(activeChallenge);
+    var c = Challenges.byId(activeChallenge);
     elPickHint.textContent = c
       ? 'Aufgabe gewählt: ' + c.text
       : 'Du kannst mehrere auf einmal auswählen.';
@@ -70,7 +70,16 @@
     elChalList.textContent = '';
     var done = 0;
 
-    window.CHALLENGES.forEach(function (c) {
+    if (!Challenges.loaded) {
+      var wait = document.createElement('li');
+      wait.className = 'chal';
+      wait.textContent = 'Aufgaben werden geladen …';
+      elChalList.appendChild(wait);
+      elChalProgress.textContent = '';
+      return;
+    }
+
+    Challenges.list.forEach(function (c) {
       var isDone = !!doneChallenges[c.id];
       if (isDone) done++;
       var li = document.createElement('li');
@@ -97,8 +106,16 @@
       elChalList.appendChild(li);
     });
 
-    elChalProgress.textContent = done + ' von ' + window.CHALLENGES.length;
+    elChalProgress.textContent = done + ' von ' + Challenges.list.length;
   }
+
+  Challenges.onChange(function () {
+    // Aufgabe könnte inzwischen gelöscht worden sein.
+    if (activeChallenge && !Challenges.byId(activeChallenge)) activeChallenge = null;
+    renderChallenges();
+    refreshPickState();
+  });
+  Challenges.load();
 
   // ---------------------------------------------------------- Status-Liste
 

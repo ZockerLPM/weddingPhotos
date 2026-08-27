@@ -88,6 +88,13 @@
       n.textContent = '🚫';
       tile.appendChild(n);
     }
+    if (p.archive) {
+      var a = document.createElement('span');
+      a.className = 'vid';
+      a.textContent = '📼';
+      a.title = 'Mitgebrachtes Altfoto – zählt nicht zur Zeitachse des Abends';
+      tile.appendChild(a);
+    }
     tile.addEventListener('click', function () {
       var newHidden = !photos.get(p.id).hidden;
       api('/api/mod/hide', { id: p.id, hidden: newHidden }).then(function () {
@@ -140,6 +147,118 @@
 
   document.getElementById('btnReload').addEventListener('click', function () {
     api('/api/mod/control', { action: 'reload' });
+  });
+
+  // ------------------------------------------------------------ Aufgaben-Editor
+
+  var elEditor = document.getElementById('chalEditor');
+  var elRows = document.getElementById('chalRows');
+  var elChalStatus = document.getElementById('chalStatus');
+
+  function chalStatus(text, cls) {
+    elChalStatus.textContent = text || '';
+    elChalStatus.className = 'status' + (cls ? ' ' + cls : '');
+  }
+
+  // Neue Zeilen bekommen eine id aus dem Text. Bestehende behalten ihre id
+  // auch beim Umformulieren – sonst verlieren hochgeladene Fotos die
+  // Zuordnung und der "Aufgabenjäger" zählt falsch.
+  function slugFor(text) {
+    var base = text.toLowerCase()
+      .replace(/[äöüß]/g, function (c) {
+        return { 'ä': 'ae', 'ö': 'oe', 'ü': 'ue', 'ß': 'ss' }[c];
+      })
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 24);
+    return (base || 'aufgabe') + '-' + Math.random().toString(36).slice(2, 6);
+  }
+
+  function addRow(item) {
+    var li = document.createElement('li');
+    li.dataset.id = item.id || '';
+
+    var icon = document.createElement('input');
+    icon.type = 'text';
+    icon.className = 'icon';
+    icon.maxLength = 8;
+    icon.value = item.icon || '📷';
+
+    var text = document.createElement('input');
+    text.type = 'text';
+    text.className = 'text';
+    text.maxLength = 120;
+    text.value = item.text || '';
+    text.placeholder = 'Aufgabe beschreiben …';
+
+    var del = document.createElement('button');
+    del.className = 'del';
+    del.type = 'button';
+    del.textContent = '✕';
+    del.title = 'Aufgabe entfernen';
+    del.addEventListener('click', function () {
+      li.remove();
+      chalStatus('Nicht vergessen: Speichern.');
+    });
+
+    li.appendChild(icon);
+    li.appendChild(text);
+    li.appendChild(del);
+    elRows.appendChild(li);
+    return li;
+  }
+
+  function fillEditor(list) {
+    elRows.textContent = '';
+    list.forEach(addRow);
+  }
+
+  function collectRows() {
+    return Array.prototype.map.call(elRows.children, function (li) {
+      var text = li.querySelector('.text').value.trim();
+      return {
+        id: li.dataset.id || slugFor(text || 'aufgabe'),
+        icon: li.querySelector('.icon').value.trim() || '📷',
+        text: text,
+      };
+    }).filter(function (c) { return c.text; });
+  }
+
+  document.getElementById('btnEditChal').addEventListener('click', function () {
+    var opening = elEditor.classList.contains('hidden');
+    elEditor.classList.toggle('hidden', !opening);
+    if (opening) {
+      chalStatus('');
+      Challenges.load().then(function (list) {
+        fillEditor(list);
+        elEditor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+  });
+
+  document.getElementById('btnAddChal').addEventListener('click', function () {
+    var li = addRow({ icon: '📷', text: '' });
+    li.querySelector('.text').focus();
+  });
+
+  document.getElementById('btnSaveChal').addEventListener('click', function () {
+    var list = collectRows();
+    if (!list.length) { chalStatus('Mindestens eine Aufgabe angeben.', 'err'); return; }
+    chalStatus('Wird gespeichert …');
+    api('/api/mod/challenges', { challenges: list }).then(function (r) {
+      Challenges.adopt(r.challenges);
+      fillEditor(r.challenges);
+      chalStatus('✓ Gespeichert – alle Gästehandys sind aktualisiert.', 'ok');
+    }).catch(function () { chalStatus('Speichern fehlgeschlagen.', 'err'); });
+  });
+
+  document.getElementById('btnResetChal').addEventListener('click', function () {
+    if (!confirm('Aufgabenliste auf den Standard zurücksetzen?')) return;
+    api('/api/mod/challenges/reset', {}).then(function (r) {
+      Challenges.adopt(r.challenges);
+      fillEditor(r.challenges);
+      chalStatus('✓ Standardliste wiederhergestellt.', 'ok');
+    }).catch(function () { chalStatus('Zurücksetzen fehlgeschlagen.', 'err'); });
   });
 
   // ------------------------------------------------------------ Laden & Live

@@ -49,11 +49,21 @@ wirkt. Ken-Burns-Effekt und unscharfer Hintergrund für Hochformat inklusive.
 **Foto-Aufgaben.** Acht Aufgaben stehen dauerhaft auf der Upload-Seite zum
 Abhaken („Jemand, der gerade lacht", „Die Hände deines Tischnachbarn" …).
 Aufgabe antippen, dann Foto wählen – die Zuordnung landet in der Datenbank
-und erscheint auf der Fotowand unter dem Bild. Definiert in
-[`public/js/challenges.js`](public/js/challenges.js); die `id` niemals
-nachträglich ändern, sonst verlieren bestehende Fotos ihre Zuordnung.
-Bei kleiner Gesellschaft sorgen die Aufgaben vor allem dafür, dass überhaupt
-genug Material zusammenkommt.
+und erscheint auf der Fotowand unter dem Bild. Bei kleiner Gesellschaft
+sorgen die Aufgaben vor allem dafür, dass überhaupt genug Material
+zusammenkommt.
+
+**Aufgaben ändern:** in der Moderation auf **🎯 Aufgaben bearbeiten**. Jede
+Zeile hat ein Feld fürs Symbol und eines für den Text, dazu ✕ zum Entfernen
+und **＋ Aufgabe** für eine neue. Speichern wirkt sofort auf allen offenen
+Gästehandys (über den SSE-Kanal), ein Neuladen ist nicht nötig.
+**↺ Standard** stellt die Ursprungsliste wieder her.
+
+Umformulieren ist unbedenklich: Jede Aufgabe trägt intern eine unveränderliche
+`id`, die beim Bearbeiten erhalten bleibt – bereits hochgeladene Fotos behalten
+ihre Zuordnung. Die Standardliste steht in
+[`server/challenges.js`](server/challenges.js), die aktive Liste in der
+Einstellungstabelle der Datenbank.
 
 **Namentliche Begrüssung.** Beim allerersten Beitrag eines Gastes blendet die
 Fotowand groß „Schön, dass du da bist, Werner!" ein. Der Server erkennt das
@@ -69,8 +79,30 @@ Danach läuft die normale Fotowand weiter. Dauer: etwa 4–6 Minuten.
 
 **Auszeichnungen.** Werden aus der Datenbank berechnet und möglichst auf
 verschiedene Gäste verteilt, damit in kleiner Runde fast jeder einen Titel
-bekommt: 📸 Fleissigster Fotograf · 🌅 Der frühe Vogel · 🌙 Der Ausdauernde ·
-💬 Der Erzähler · 🎯 Der Aufgabenjäger · 🎙️ Die Stimme des Abends.
+bekommt: 📸 Fleissigster Fotograf · 📼 Der Archivar · 🌅 Der frühe Vogel ·
+🌙 Der Ausdauernde · 💬 Der Erzähler · 🎯 Der Aufgabenjäger ·
+🎙️ Die Stimme des Abends.
+
+**Mitgebrachte Altfotos.** Wer ein Kinderbild hochlädt, bringt ein
+Aufnahmedatum von vor dreissig Jahren mit – das würde die Zeitachse des
+Abends und die Auszeichnungen ruinieren („Der frühe Vogel" ginge an ein Foto
+von 1995). Der Server erkennt das selbst: Liegt das Aufnahmedatum **mehr als
+36 Stunden vor dem Upload** oder mehr als eine Stunde in der Zukunft (falsch
+gestellte Handyuhr), gilt das Bild als *Altfoto*.
+
+- Für Reihenfolge und Auszeichnungen zählt dann der **Uploadzeitpunkt**
+  (`effective_at`), das echte Aufnahmedatum bleibt gespeichert
+- Auf der Fotowand steht „📼 Von früher, mitgebracht von Oma"
+- Im Rückblick eröffnen die Altfotos ein eigenes Kapitel **„Von früher"**,
+  bevor der Abend chronologisch beginnt
+- In der Galerie stehen sie unter **„📼 Mitgebracht von früher"** am Ende,
+  mit ihrem echten Aufnahmedatum in der Detailansicht
+- In der Moderation sind sie mit 📼 gekennzeichnet
+- Sie zählen für den Titel **Der Archivar**, nicht für den fleissigsten Fotografen
+
+Die Grenze steht als `ARCHIVE_BEFORE_MS` in `server/index.js`. Wer am
+Vortag schon Fotos macht und erst am Fest hochlädt, bleibt innerhalb der
+36 Stunden und wird normal einsortiert.
 
 **Erzählecke** (`/box`). Tablet oder Laptop in einer ruhigen Ecke. Namen
 eintragen, aufnehmen (max. 90 s), anschauen, absenden – oder nochmal. Die
@@ -87,15 +119,17 @@ npm test
 ```
 
 Startet für jede Suite einen eigenen Server mit temporärem Datenverzeichnis
-und prüft 52 Punkte: Grundfunktionen (Upload, Moderation, Galerie, ZIP,
+und prüft 79 Punkte: Grundfunktionen (Upload, Moderation, Galerie, ZIP,
 Fehlerfälle), die Upload-Warteschlange inklusive nachgebautem iOS-Verhalten,
-und die Abendfunktionen. Vor jedem Deploy einmal laufen lassen.
+die Abendfunktionen sowie Altfoto-Erkennung und Aufgaben-Editor.
+Vor jedem Deploy einmal laufen lassen.
 
 ## Projektstruktur
 
 ```
 server/           Node.js-Backend (Express, SQLite, SSE)
   index.js        Routen: Upload, Feed, Stream, Moderation, Rückblick, ZIP, Health
+  challenges.js   Standard-Aufgaben und Prüfung der bearbeiteten Liste
   db.js           SQLite-Schema, Migrationen und Zugriffe (better-sqlite3, WAL)
   sse.js          Event-Verteiler mit Nachhol-Logik
   ulid.js         Zeitlich sortierbare Foto-IDs
@@ -105,7 +139,7 @@ public/           Frontend, reines HTML/CSS/JS ohne Build-Schritt
   box.html        Erzählecke              + js/box.js
   galerie.html    Galerie                 + js/gallery.js
   mod.html        Moderation              + js/mod.js
-  js/challenges.js  Foto-Aufgaben, von mehreren Seiten genutzt
+  js/challenges.js  lädt die Aufgabenliste vom Server, von mehreren Seiten genutzt
 scripts/
   backup-pull.sh  Backup von zuhause holen
   test/           Testsuiten (npm test)
@@ -319,6 +353,8 @@ anlegen, gesichertes `data/` nach `/opt/hochzeit/app/data/` kopieren,
 | HEIC-Foto schlägt auf Android fehl | Android-Chrome kann HEIC nicht dekodieren (iPhone-Fotos via Messenger). Betroffene Gäste: Foto stattdessen aus der Kamera-App teilen |
 | iPhone bleibt bei „Original folgt …", Log zeigt `laenge=0` | Behoben. iOS Safari konnte die `File`-Referenz nicht aus IndexedDB zurückgeben. Die Warteschlange materialisiert die Bytes jetzt vor dem Speichern (`MATERIALIZE_MAX` in `queue.js`) |
 | Erzählecke zeigt „Kamera nicht verfügbar" | Seite muss über **HTTPS** laufen (`localhost` ist ausgenommen). Sonst: Kamerafreigabe im Browser erteilt? Nutzt eine andere App gerade die Kamera? |
+| Altfoto wurde fälschlich als Abendfoto einsortiert | Die Datei hat kein oder ein falsches Aufnahmedatum (etwa nach dem Weiterleiten über einen Messenger). Kein Schaden – das Bild läuft dann einfach als normales Foto mit |
+| Abendfoto landet unter „von früher" | Die Uhr des Handys geht falsch. In der Moderation am 📼 erkennbar |
 | Rückblick zeigt nur wenige Fotos | Normal bei wenigen Uploads – gewählt wird eines je 15-Minuten-Fenster plus je ein Foto pro Gast. Fenstergrösse: `BUCKET` in `buildRecap` (`server/index.js`) |
 | Fotowand wiederholt sich trotzdem | Passiert nur, wenn insgesamt sehr wenige Fotos da sind – der Ringpuffer kann nicht mehr Abstand schaffen als Bilder vorhanden sind |
 | Platte läuft voll | `df -h`; Volume in Hetzner-Konsole anhängen, in compose als zusätzlichen Mount für `./data` nutzen |
