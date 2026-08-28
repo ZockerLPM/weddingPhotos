@@ -16,7 +16,7 @@ const ROOT = path.join(__dirname, '..', '..');
 const BASE_PORT = Number(process.env.TEST_PORT || 3199);
 const KEY = 'test-schluessel';
 
-const SUITES = ['./suite-api.mjs', './suite-queue.mjs', './suite-features.mjs', './suite-archive.mjs'];
+const SUITES = ['./suite-exif.mjs', './suite-api.mjs', './suite-queue.mjs', './suite-features.mjs', './suite-archive.mjs'];
 
 async function startServer(port) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fotowand-test-'));

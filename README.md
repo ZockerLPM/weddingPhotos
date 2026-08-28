@@ -83,6 +83,27 @@ bekommt: 📸 Fleissigster Fotograf · 📼 Der Archivar · 🌅 Der frühe Voge
 🌙 Der Ausdauernde · 💬 Der Erzähler · 🎯 Der Aufgabenjäger ·
 🎙️ Die Stimme des Abends.
 
+**Woher der Zeitpunkt kommt.** Der Browser liest den Auslösezeitpunkt aus den
+EXIF-Metadaten (`DateTimeOriginal`, bei Bedarf mit Zeitzone aus
+`OffsetTimeOriginal`), bevor das Foto verkleinert wird – siehe
+[`public/js/exif.js`](public/js/exif.js), ein kleiner eigener Parser ohne
+Zusatzabhängigkeit. Das ist deutlich verlässlicher als das Dateidatum: Ein
+über einen Messenger weitergeleitetes Bild trägt dort den Zeitpunkt des
+Downloads, nicht der Aufnahme.
+
+Reihenfolge der Quellen, gespeichert als `time_source`:
+
+| Quelle | Bedeutung |
+|---|---|
+| `exif` | `DateTimeOriginal` – der Auslösezeitpunkt, der Normalfall |
+| `exif-scan` | `DateTimeDigitized` – etwa bei eingescannten Bildern |
+| `exif-datei` | `DateTime` aus IFD0 |
+| `aufnahme` | direkt in der Erzählecke aufgenommen |
+| `datei` | kein EXIF – Rückfall auf `lastModified`, unzuverlässig |
+
+Videos und Bilder ohne EXIF (etwa HEIC oder PNG) fallen auf das Dateidatum
+zurück. Bei einem Video, das am Fest aufgenommen wurde, stimmt das ohnehin.
+
 **Mitgebrachte Altfotos.** Wer ein Kinderbild hochlädt, bringt ein
 Aufnahmedatum von vor dreissig Jahren mit – das würde die Zeitachse des
 Abends und die Auszeichnungen ruinieren („Der frühe Vogel" ginge an ein Foto
@@ -104,6 +125,17 @@ Die Grenze steht als `ARCHIVE_BEFORE_MS` in `server/index.js`. Wer am
 Vortag schon Fotos macht und erst am Fest hochlädt, bleibt innerhalb der
 36 Stunden und wird normal einsortiert.
 
+**Von Hand korrigieren.** Ohne Metadaten kann die Erkennung danebenliegen –
+ein über WhatsApp weitergeleitetes Kinderbild trägt das Datum der
+Weiterleitung. In der Moderation hat deshalb jede Kachel oben links einen
+Schalter: 🕐 = Foto des Abends, 📼 = mitgebracht von früher. Antippen
+schaltet um, ein Fingerzeig auf den Schalter zeigt Zeitpunkt und Herkunft.
+Der Schalter ist ein eigenes Tippfeld, damit ein Fehlgriff nicht
+versehentlich das Foto ausblendet.
+
+Die Upload-Seite meldet dem Gast ebenfalls zurück, wenn sein Bild als
+„📼 Foto von früher" eingestuft wurde.
+
 **Erzählecke** (`/box`). Tablet oder Laptop in einer ruhigen Ecke. Namen
 eintragen, aufnehmen (max. 90 s), anschauen, absenden – oder nochmal. Die
 Aufnahme läuft durch dieselbe Warteschlange wie die Fotos: Standbild als
@@ -119,7 +151,8 @@ npm test
 ```
 
 Startet für jede Suite einen eigenen Server mit temporärem Datenverzeichnis
-und prüft 79 Punkte: Grundfunktionen (Upload, Moderation, Galerie, ZIP,
+und prüft 107 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
+bekannten Metadaten), Grundfunktionen (Upload, Moderation, Galerie, ZIP,
 Fehlerfälle), die Upload-Warteschlange inklusive nachgebautem iOS-Verhalten,
 die Abendfunktionen sowie Altfoto-Erkennung und Aufgaben-Editor.
 Vor jedem Deploy einmal laufen lassen.
@@ -140,6 +173,7 @@ public/           Frontend, reines HTML/CSS/JS ohne Build-Schritt
   galerie.html    Galerie                 + js/gallery.js
   mod.html        Moderation              + js/mod.js
   js/challenges.js  lädt die Aufgabenliste vom Server, von mehreren Seiten genutzt
+  js/exif.js        liest den Aufnahmezeitpunkt aus den Bild-Metadaten
 scripts/
   backup-pull.sh  Backup von zuhause holen
   test/           Testsuiten (npm test)
@@ -353,8 +387,9 @@ anlegen, gesichertes `data/` nach `/opt/hochzeit/app/data/` kopieren,
 | HEIC-Foto schlägt auf Android fehl | Android-Chrome kann HEIC nicht dekodieren (iPhone-Fotos via Messenger). Betroffene Gäste: Foto stattdessen aus der Kamera-App teilen |
 | iPhone bleibt bei „Original folgt …", Log zeigt `laenge=0` | Behoben. iOS Safari konnte die `File`-Referenz nicht aus IndexedDB zurückgeben. Die Warteschlange materialisiert die Bytes jetzt vor dem Speichern (`MATERIALIZE_MAX` in `queue.js`) |
 | Erzählecke zeigt „Kamera nicht verfügbar" | Seite muss über **HTTPS** laufen (`localhost` ist ausgenommen). Sonst: Kamerafreigabe im Browser erteilt? Nutzt eine andere App gerade die Kamera? |
-| Altfoto wurde fälschlich als Abendfoto einsortiert | Die Datei hat kein oder ein falsches Aufnahmedatum (etwa nach dem Weiterleiten über einen Messenger). Kein Schaden – das Bild läuft dann einfach als normales Foto mit |
-| Abendfoto landet unter „von früher" | Die Uhr des Handys geht falsch. In der Moderation am 📼 erkennbar |
+| Altfoto wurde fälschlich als Abendfoto einsortiert | Die Datei hat kein EXIF (typisch nach dem Weiterleiten über einen Messenger). In der Moderation über den Schalter 🕐 → 📼 korrigieren |
+| Abendfoto landet unter „von früher" | Die Uhr des Handys geht falsch, oder das EXIF fehlt. In der Moderation über den Schalter 📼 → 🕐 korrigieren |
+| Zeitpunkt eines Fotos wirkt falsch | In der Moderation auf den Schalter der Kachel zeigen – dort stehen Zeitpunkt und Herkunft (`exif` vs. `datei`) |
 | Rückblick zeigt nur wenige Fotos | Normal bei wenigen Uploads – gewählt wird eines je 15-Minuten-Fenster plus je ein Foto pro Gast. Fenstergrösse: `BUCKET` in `buildRecap` (`server/index.js`) |
 | Fotowand wiederholt sich trotzdem | Passiert nur, wenn insgesamt sehr wenige Fotos da sind – der Ringpuffer kann nicht mehr Abstand schaffen als Bilder vorhanden sind |
 | Platte läuft voll | `df -h`; Volume in Hetzner-Konsole anhängen, in compose als zusätzlichen Mount für `./data` nutzen |

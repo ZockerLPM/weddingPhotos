@@ -112,4 +112,59 @@ export default async function run({ base, key, ok }) {
   ok('Zurücksetzen stellt die Standardliste her', reset.challenges.length === 8);
 
   sse.close();
+  await extra({ base, key, ok });
+}
+
+// Zusatz: Herkunft der Zeit und manuelles Umschalten der Einordnung.
+export async function extra({ base, key, ok }) {
+  const sse = await listenSSE(base);
+  const jetzt = Date.now();
+
+  const a = await uploadPhoto(base, {
+    who: 'Metadaten', takenAt: jetzt - 20 * 60000, timeSource: 'exif',
+  });
+  const b = await uploadPhoto(base, {
+    who: 'Ohnedaten', takenAt: jetzt - 5 * 60000, timeSource: 'datei',
+  });
+  await wait(200);
+
+  let feed = await (await fetch(base + '/api/feed')).json();
+  let byId = Object.fromEntries(feed.photos.map((p) => [p.id, p]));
+  ok('Herkunft "exif" wird gespeichert', byId[a.body.id]?.timeSource === 'exif');
+  ok('Herkunft "datei" wird gespeichert', byId[b.body.id]?.timeSource === 'datei');
+  ok('Upload meldet die Einordnung zurück', a.body.archive === false);
+
+  // --- Von Hand zum Altfoto erklären (Fall: weitergeleitetes Kinderbild)
+  const zu = await (await modFetch(base, key, '/api/mod/archive',
+    { id: b.body.id, archive: true })).json();
+  ok('Manuell als Altfoto markierbar', zu.photo.archive === true);
+  ok('Effektive Zeit springt auf den Upload',
+    zu.photo.effectiveAt === zu.photo.uploadedAt);
+  await wait(200);
+  ok('SSE meldet die Änderung',
+    sse.events.some((e) => e.type === 'update' && e.data.id === b.body.id));
+
+  const recap = await (await fetch(base + '/api/recap')).json();
+  ok('Manuelles Altfoto steht im Vorspann',
+    recap.archive.some((p) => p.id === b.body.id));
+  ok('Manuelles Altfoto fehlt im Hauptteil',
+    !recap.photos.some((p) => p.id === b.body.id));
+
+  // --- Und wieder zurück
+  const auf = await (await modFetch(base, key, '/api/mod/archive',
+    { id: b.body.id, archive: false })).json();
+  ok('Rücknahme funktioniert', auf.photo.archive === false);
+  ok('Effektive Zeit ist wieder die Aufnahmezeit',
+    auf.photo.effectiveAt === auf.photo.takenAt);
+
+  ok('Unbekannte ID wird abgelehnt',
+    (await modFetch(base, key, '/api/mod/archive',
+      { id: '01ZZZZZZZZZZZZZZZZZZZZZZZZ', archive: true })).status === 404);
+  ok('Umschalten braucht den Schlüssel',
+    (await fetch(base + '/api/mod/archive', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: b.body.id, archive: true }),
+    })).status === 401);
+
+  sse.close();
 }

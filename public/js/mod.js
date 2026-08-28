@@ -52,12 +52,35 @@
     return c;
   }
 
+  // Zeilenumbruch für die Tooltips der Kacheln.
+  var BREAK = String.fromCharCode(10);
+
+  var QUELLE = {
+    'exif': 'Aufnahmezeit aus den Metadaten',
+    'exif-scan': 'Digitalisierungszeit aus den Metadaten',
+    'exif-datei': 'Änderungszeit aus den Metadaten',
+    'aufnahme': 'direkt in der Erzählecke aufgenommen',
+    'datei': 'keine Metadaten – Dateidatum (unzuverlässig)',
+  };
+
+  function describeTime(p) {
+    var ts = p.takenAt || p.uploadedAt;
+    var wann = new Date(ts).toLocaleString('de-AT', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+    return wann + BREAK + (QUELLE[p.timeSource] || p.timeSource);
+  }
+
   function renderChips() {
     elChips.textContent = '';
     var visible = 0, hidden = 0;
     photos.forEach(function (p) { p.hidden ? hidden++ : visible++; });
+    var altfotos = 0;
+    photos.forEach(function (p) { if (p.archive && !p.hidden) altfotos++; });
     elChips.appendChild(chip('Sichtbar:', String(visible)));
     elChips.appendChild(chip('Versteckt:', String(hidden)));
+    if (altfotos) elChips.appendChild(chip('📼 Von früher:', String(altfotos)));
     elChips.appendChild(chip('Fotowand:', state.paused ? '⏸ Pause' : '▶ läuft'));
     elChips.appendChild(chip('Modus:', state.mode === 'quiet' ? '🤫 Ruhe' : 'Normal'));
     elChips.appendChild(chip('Galerie:', state.galleryOpen ? '🔓 offen' : '🔒 zu'));
@@ -88,13 +111,25 @@
       n.textContent = '🚫';
       tile.appendChild(n);
     }
-    if (p.archive) {
-      var a = document.createElement('span');
-      a.className = 'vid';
-      a.textContent = '📼';
-      a.title = 'Mitgebrachtes Altfoto – zählt nicht zur Zeitachse des Abends';
-      tile.appendChild(a);
-    }
+    // Schalter für die Einordnung. Eigenes Tippfeld, damit ein Fehlgriff
+    // nicht versehentlich das Foto ausblendet.
+    var flag = document.createElement('button');
+    flag.className = 'flag' + (p.archive ? ' on' : '');
+    flag.type = 'button';
+    flag.textContent = p.archive ? '📼' : '🕐';
+    flag.title = describeTime(p) + BREAK + (p.archive
+      ? 'Gilt als mitgebrachtes Altfoto – antippen macht es zum Foto des Abends.'
+      : 'Gilt als Foto des Abends – antippen macht es zum Altfoto.');
+    flag.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      api('/api/mod/archive', { id: p.id, archive: !photos.get(p.id).archive })
+        .then(function (r) {
+          photos.set(p.id, Object.assign({}, photos.get(p.id), r.photo));
+          tile.replaceWith(makeTile(photos.get(p.id)));
+        }).catch(function () {});
+    });
+    tile.appendChild(flag);
+
     tile.addEventListener('click', function () {
       var newHidden = !photos.get(p.id).hidden;
       api('/api/mod/hide', { id: p.id, hidden: newHidden }).then(function () {
@@ -300,6 +335,15 @@
         if (old) old.replaceWith(makeTile(p));
         renderChips();
       }
+    });
+    es.addEventListener('update', function (e) {
+      var p = JSON.parse(e.data);
+      var known = photos.get(p.id);
+      if (!known) return;
+      photos.set(p.id, Object.assign({}, known, p));
+      var old = elGrid.querySelector('[data-id="' + p.id + '"]');
+      if (old) old.replaceWith(makeTile(photos.get(p.id)));
+      renderChips();
     });
     es.addEventListener('control', function (e) {
       var c = JSON.parse(e.data);

@@ -126,8 +126,10 @@
     switch (item.state) {
       case 'processing': return 'wird verkleinert …';
       case 'new': return navigator.onLine ? '⬆️ lädt hoch …' : 'wartet auf Netz …';
-      case 'meta': return '✓ auf der Fotowand – Original folgt …';
+      case 'meta': return (item.serverArchive ? '📼 als Foto von früher erkannt · ' : '')
+        + '✓ auf der Fotowand – Original folgt …';
       case 'done':
+        if (item.serverArchive) return '📼 als Foto von früher gespeichert';
         if (item.skipOriginal) return '✓ geteilt (Datei zu gross fürs Original)';
         if (item.originalLost) return '✓ geteilt (Original nicht mehr verfügbar)';
         return '✓✓ komplett gesichert';
@@ -252,10 +254,20 @@
       caption: caption,
       challengeId: challengeId || null,
       takenAt: file.lastModified || Date.now(),
+      timeSource: 'datei',
       filename: file.name,
       state: 'processing',
     };
     render(item);
+
+    // Aufnahmezeitpunkt bevorzugt aus den EXIF-Metadaten. Videos haben
+    // kein EXIF – dort bleibt es beim Dateidatum, das bei einer frisch
+    // aufgenommenen Videodatei ohnehin stimmt.
+    var timing = (!isVideo && window.readCaptureTime)
+      ? window.readCaptureTime(file).then(function (r) {
+          if (r && r.ts) { item.takenAt = r.ts; item.timeSource = r.source; }
+        }).catch(function () {})
+      : Promise.resolve();
 
     var prep;
     if (isVideo) {
@@ -281,7 +293,7 @@
       });
     }
 
-    return prep.then(function (res) {
+    return timing.then(function () { return prep; }).then(function (res) {
       var display = res[0], thumb = res[1];
       item.displayBlob = display.blob;
       item.thumbBlob = thumb.blob;

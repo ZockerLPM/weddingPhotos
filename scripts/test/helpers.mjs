@@ -50,7 +50,7 @@ let counter = 0;
 export async function uploadPhoto(base, opts = {}) {
   const {
     who = 'Testgast', kind = 'photo', caption = '',
-    challengeId = null, takenAt = Date.now(), clientId,
+    challengeId = null, takenAt = Date.now(), clientId, timeSource,
   } = opts;
 
   const f = new FormData();
@@ -61,6 +61,7 @@ export async function uploadPhoto(base, opts = {}) {
   f.append('takenAt', String(takenAt));
   f.append('caption', caption);
   if (challengeId) f.append('challengeId', challengeId);
+  if (timeSource) f.append('timeSource', timeSource);
   f.append('w', '1600');
   f.append('h', '1200');
   f.append('display', new Blob([JPEG], { type: 'image/jpeg' }), 'display.jpg');

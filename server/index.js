@@ -71,6 +71,7 @@ function rowToPublic(r) {
     challengeId: r.challenge_id || null,
     archive: !!r.archive,
     effectiveAt: r.effective_at || r.uploaded_at,
+    timeSource: r.time_source || 'datei',
     w: r.width,
     h: r.height,
     takenAt: r.taken_at,
@@ -174,6 +175,7 @@ app.post('/api/upload', upSmall.fields([
     uploadedAt,
     archive: when.archive,
     effectiveAt: when.effectiveAt,
+    timeSource: str(req.body.timeSource, 20) || 'datei',
   };
 
   await fsp.writeFile(path.join(db.dirs.photos, `${id}-d.jpg`), display.buffer);
@@ -181,7 +183,8 @@ app.post('/api/upload', upSmall.fields([
   db.insertPhoto(row);
 
   sse.emit('photo', { ...rowToPublic(db.byId(id)), firstUpload });
-  res.json({ id, existed: false });
+  // archive zurückmelden, damit die Upload-Seite es dem Gast anzeigen kann.
+  res.json({ id, existed: false, archive: !!row.archive });
 });
 
 // Langsamer Pfad: das Original in voller Qualität, mit Wiederholversuchen.
@@ -364,6 +367,23 @@ app.post('/api/mod/hide', modAuth, (req, res) => {
   if (!hidden) payload.photo = rowToPublic(db.byId(id));
   sse.emit('hide', payload);
   res.json({ ok: true });
+});
+
+// Nicht jedes Bild hat verwertbare Metadaten: ein über einen Messenger
+// weitergeleitetes Kinderfoto trägt den Weiterleitungs-Zeitpunkt. Deshalb
+// lässt sich die Einordnung von Hand korrigieren.
+app.post('/api/mod/archive', modAuth, (req, res) => {
+  const id = str(req.body.id, 26);
+  const p = db.byId(id);
+  if (!p) return res.status(404).json({ error: 'unbekannt' });
+
+  const archive = !!req.body.archive;
+  const effectiveAt = archive ? p.uploaded_at : (p.taken_at || p.uploaded_at);
+  db.setArchive(id, archive, effectiveAt);
+
+  const photo = rowToPublic(db.byId(id));
+  sse.emit('update', photo);
+  res.json({ ok: true, photo });
 });
 
 app.post('/api/mod/control', modAuth, (req, res) => {

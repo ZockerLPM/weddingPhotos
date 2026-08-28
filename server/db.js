@@ -64,6 +64,10 @@ ensureColumn('photos', 'challenge_id', 'TEXT');
 // zählt: das echte Aufnahmedatum, wenn es plausibel ist, sonst der Upload.
 ensureColumn('photos', 'archive', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('photos', 'effective_at', 'INTEGER');
+// Woher der Zeitstempel stammt: 'exif' (Auslösezeitpunkt aus den Metadaten),
+// 'exif-scan', 'exif-datei', 'aufnahme' (Erzählecke) oder 'datei'
+// (Rückfall auf das Dateidatum – unzuverlässig).
+ensureColumn('photos', 'time_source', "TEXT NOT NULL DEFAULT 'datei'");
 
 // Bestandsdaten nachziehen (36 h Fenster, 1 h Toleranz nach vorne).
 db.exec(`
@@ -89,15 +93,17 @@ const stmt = {
   insertPhoto: db.prepare(`
     INSERT INTO photos (id, client_id, uploader, device_id, kind, caption,
                         challenge_id, width, height, taken_at, uploaded_at,
-                        archive, effective_at)
+                        archive, effective_at, time_source)
     VALUES (@id, @clientId, @uploader, @deviceId, @kind, @caption,
             @challengeId, @width, @height, @takenAt, @uploadedAt,
-            @archive, @effectiveAt)`),
+            @archive, @effectiveAt, @timeSource)`),
   byClientId: db.prepare(`SELECT * FROM photos WHERE client_id = ?`),
   byId: db.prepare(`SELECT * FROM photos WHERE id = ?`),
   markOriginal: db.prepare(
     `UPDATE photos SET has_original = 1, ext_original = ?, mime_original = ? WHERE id = ?`),
   setHidden: db.prepare(`UPDATE photos SET hidden = ? WHERE id = ?`),
+  setArchive: db.prepare(
+    `UPDATE photos SET archive = ?, effective_at = ? WHERE id = ?`),
   listVisible: db.prepare(
     `SELECT * FROM photos WHERE hidden = 0 ORDER BY id ASC LIMIT 5000`),
   listRecent: db.prepare(`SELECT * FROM photos ORDER BY id DESC LIMIT ?`),
@@ -144,6 +150,9 @@ export function byClientId(cid) { return stmt.byClientId.get(cid); }
 export function byId(id) { return stmt.byId.get(id); }
 export function markOriginal(id, ext, mime) { stmt.markOriginal.run(ext, mime, id); }
 export function setHidden(id, hidden) { stmt.setHidden.run(hidden ? 1 : 0, id); }
+export function setArchive(id, archive, effectiveAt) {
+  stmt.setArchive.run(archive ? 1 : 0, effectiveAt, id);
+}
 export function listVisible() { return stmt.listVisible.all(); }
 export function listRecent(limit = 300) { return stmt.listRecent.all(limit); }
 export function counts() { return stmt.counts.get(); }

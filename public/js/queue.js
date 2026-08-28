@@ -111,12 +111,14 @@
     f.append('takenAt', String(item.takenAt));
     f.append('caption', item.caption || '');
     f.append('challengeId', item.challengeId || '');
+    f.append('timeSource', item.timeSource || 'datei');
     f.append('w', String(item.w || ''));
     f.append('h', String(item.h || ''));
     f.append('display', item.displayBlob, 'display.jpg');
     f.append('thumb', item.thumbBlob, 'thumb.jpg');
     return postForm('/api/upload', f).then(function (res) {
       item.serverId = res.id;
+      item.serverArchive = !!res.archive;
       item.state = item.wantsOriginal ? 'meta' : 'done';
       item.nextTry = 0;
       item.attempts = 0;

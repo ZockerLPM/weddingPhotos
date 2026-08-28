@@ -231,6 +231,7 @@
         caption: 'Botschaft aus der Erzählecke',
         challengeId: null,
         takenAt: Date.now(),
+        timeSource: 'aufnahme',
         filename: 'botschaft.' + recorded.ext,
         w: posterBlobs.display.w,
         h: posterBlobs.display.h,

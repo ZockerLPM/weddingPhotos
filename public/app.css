@@ -290,6 +290,23 @@ ul.uplist .st.err { color: var(--err); }
 
 .grid .tile.off img { opacity: .25; }
 
+/* Einordnungs-Schalter in der Moderation (Abendfoto / Altfoto) */
+.grid .tile .flag {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(10, 11, 13, .72);
+  color: var(--text);
+  font-size: .85rem;
+  line-height: 1;
+  padding: 5px 6px;
+  cursor: pointer;
+}
+
+.grid .tile .flag.on { background: rgba(212, 175, 106, .9); }
+
 .grid .tile .nope {
   position: absolute;
   inset: 0;

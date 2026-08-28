@@ -410,6 +410,10 @@
 
     es.addEventListener('photo', function (e) { onPhoto(JSON.parse(e.data)); });
     es.addEventListener('hide', function (e) { onHide(JSON.parse(e.data)); });
+    es.addEventListener('update', function (e) {
+      var p = JSON.parse(e.data);
+      if (pool.has(p.id)) pool.set(p.id, p);
+    });
     es.addEventListener('control', function (e) { onControl(JSON.parse(e.data)); });
     es.addEventListener('challenges', function (e) {
       Challenges.adopt(JSON.parse(e.data).challenges);
