@@ -151,7 +151,7 @@ npm test
 ```
 
 Startet für jede Suite einen eigenen Server mit temporärem Datenverzeichnis
-und prüft 107 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
+und prüft 116 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
 bekannten Metadaten), Grundfunktionen (Upload, Moderation, Galerie, ZIP,
 Fehlerfälle), die Upload-Warteschlange inklusive nachgebautem iOS-Verhalten,
 die Abendfunktionen sowie Altfoto-Erkennung und Aufgaben-Editor.
@@ -175,7 +175,8 @@ public/           Frontend, reines HTML/CSS/JS ohne Build-Schritt
   js/challenges.js  lädt die Aufgabenliste vom Server, von mehreren Seiten genutzt
   js/exif.js        liest den Aufnahmezeitpunkt aus den Bild-Metadaten
 scripts/
-  backup-pull.sh  Backup von zuhause holen
+  backup-pull.sh  Backup von zuhause holen (WSL/Linux/macOS)
+  backup-pull.ps1 dasselbe nativ unter Windows, ohne WSL
   test/           Testsuiten (npm test)
 data/             entsteht zur Laufzeit: app.db + photos/ (nicht im Git)
 ```
@@ -339,14 +340,57 @@ Drei Ebenen, von automatisch bis manuell:
 
 1. **Hetzner-Backups** (beim Server aktiviert): tägliche Snapshots des
    ganzen Servers. Wiederherstellung über die Hetzner-Konsole.
-2. **Pull von zuhause** – wichtigste Ebene, weil unabhängig von Hetzner:
+2. **Pull von zuhause** – wichtigste Ebene, weil unabhängig von Hetzner.
+   Zwei Wege, beide holen dasselbe:
 
-   ```bash
-   # In WSL (einmalig: sudo apt install rsync)
-   ./scripts/backup-pull.sh deploy@SERVER-IP
+   ```powershell
+   # Windows, ohne WSL – braucht nur den mitgelieferten OpenSSH-Client
+   .scriptsackup-pull.ps1 -Server deploy@SERVER-IP -Dest C:hochzeitBackup
    ```
 
+   ```bash
+   # WSL, Linux oder macOS
+   SSH_KEY=~/.ssh/hochzeit ./scripts/backup-pull.sh deploy@SERVER-IP ~/hochzeit-backup
+   ```
+
+   Beide Skripte erzeugen zuerst einen **konsistenten Datenbank-Schnappschuss**
+   auf dem Server (`VACUUM INTO`) und holen dann die Dateien. Ein einfaches
+   Kopieren der laufenden `app.db` könnte im WAL-Modus einen halben
+   Schreibvorgang erwischen.
+
+   Die Dateien kommen über **eine einzige SSH-Verbindung** als tar-Datenstrom.
+   Das ist schnell und – wichtiger – es fragt die Passphrase höchstens zweimal
+   statt einmal pro Übertragungsblock.
+
+   ### Passphrase nur einmal eingeben
+
+   Ohne geladenen Schlüssel fragt jeder Verbindungsaufbau erneut. Einmalig
+   einrichten, dann ist Ruhe:
+
+   ```powershell
+   # PowerShell als Administrator – nur einmal pro Rechner
+   Set-Service ssh-agent -StartupType Automatic
+   Start-Service ssh-agent
+   ```
+
+   ```powershell
+   # normale PowerShell – Passphrase einmal eingeben
+   ssh-add $env:USERPROFILE.sshhochzeit
+   ```
+
+   Unter WSL/Linux entsprechend `eval $(ssh-agent -s) && ssh-add ~/.ssh/hochzeit`
+   (gilt dort pro Terminal-Sitzung).
+
    Am Hochzeitsabend und am Tag danach je einmal ausführen.
+
+   > **Windows-Laufwerk unter WSL:** Sichert man nach `/mnt/c/...`, scheitert
+   > `rsync -a` mit `mkstemp ... failed: Operation not permitted (1)`. Das
+   > Windows-Dateisystem lässt die Rechte- und Eigentümer-Operationen nicht zu,
+   > die `-a` mitbringt. Das Skript arbeitet deshalb mit
+   > `--no-perms --no-owner --no-group --omit-dir-times --inplace` –
+   > `--inplace` vermeidet die temporären Dateien, an denen `mkstemp`
+   > scheitert. Wer lieber gar nicht über WSL geht, nimmt die
+   > PowerShell-Variante.
 3. **Nach dem Fest**: `data/`-Ordner zusätzlich auf eine externe Platte
    kopieren (3-2-1-Regel). Erst dann den Server kündigen.
 
@@ -379,6 +423,12 @@ anlegen, gesichertes `data/` nach `/opt/hochzeit/app/data/` kopieren,
 |---|---|
 | `docker compose logs app` zeigt „MOD_KEY fehlt" | `.env` nicht angelegt oder Platzhalter nicht ersetzt |
 | Kein TLS-Zertifikat | DNS zeigt noch nicht auf den Server (`nslookup`), oder Port 80 zu. `docker compose logs caddy` |
+| Video wird nicht hochgeladen | Behoben. Bisher scheiterte der ganze Upload, wenn sich kein Standbild aus dem Video gewinnen liess. Jetzt gibt es einen Platzhalter, das Video geht in jedem Fall hoch |
+| Video zeigt eine schwarze Kachel mit 🎬 | Der Browser konnte kein Standbild gewinnen (oft HEVC vom iPhone in Chrome). Das Video selbst ist vollständig gespeichert |
+| Video lässt sich in der Galerie nicht abspielen | `.mov` mit HEVC spielt Safari, Chrome oft nicht. Die Datei ist in Ordnung – über den Download-Knopf lokal öffnen |
+| `mkstemp ... Operation not permitted` beim Backup | Ziel liegt auf einem Windows-Laufwerk unter WSL. Aktuelles `backup-pull.sh` verwenden oder auf `backup-pull.ps1` wechseln |
+| Backup fragt ständig nach der Passphrase | Schlüssel in den ssh-agent legen, siehe oben. Ohne Agent fragt jede Verbindung neu |
+| `scp: Connection closed` mitten im Backup | War die Folge vieler Einzelverbindungen. Das Skript nutzt jetzt eine Verbindung; danach nochmal starten, es holt nur das Fehlende |
 | Upload bricht mit 413 ab | Datei > 512 MB. Limit in `server/index.js` (`upOriginal`) erhöhen – `Caddyfile` (`max_size`) muss **grösser** bleiben als dieser Wert |
 | Log: `[Upload abgebrochen] …` | Normal, kein Fehler: Handy ging in Standby, Netz weg oder Tab geschlossen. Die Warteschlange im Browser sendet automatisch neu. Erst wenn es dauerhaft dieselbe Datei trifft, ist die Datei selbst das Problem |
 | Log: `Unexpected end of form` mit Stacktrace | Alte Version – ab dem Fix wird daraus die kompakte Zeile oben. `docker compose up -d --build` |

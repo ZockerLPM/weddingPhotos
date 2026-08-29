@@ -77,4 +77,37 @@ export default async function run({ base, key, ok }) {
     feed2.photos.some((p) => p.id === msg.body.id && p.kind === 'message'));
 
   sse.close();
+  await videos({ base, ok });
+}
+
+// Video-Upload: eigener Pfad, weil hier schon einmal etwas schiefging.
+export async function videos({ base, ok }) {
+  const up = await uploadPhoto(base, { who: 'Filmer', kind: 'video' });
+  ok('Video-Upload wird angenommen', up.status === 200 && !!up.body.id);
+  const id = up.body.id;
+
+  // Original mit realistischer Grösse und iPhone-Endung nachreichen.
+  const gross = Buffer.alloc(3 * 1024 * 1024, 0x7a);
+  const fo = new FormData();
+  fo.append('original', new Blob([gross], { type: 'video/quicktime' }), 'IMG_4711.MOV');
+  const r = await fetch(`${base}/api/original/${id}`, { method: 'POST', body: fo });
+  ok('Video-Original wird angenommen', r.status === 200, 'Status ' + r.status);
+
+  const feed = await (await fetch(base + '/api/feed')).json();
+  const p = feed.photos.find((x) => x.id === id);
+  ok('Video steht im Feed', !!p && p.kind === 'video');
+  ok('Endung wird aus dem Dateinamen übernommen', p?.ext === 'mov', 'ext=' + p?.ext);
+  ok('Video ist als Original markiert', p?.hasOriginal === true);
+
+  const datei = await fetch(`${base}/i/${id}-o.mov`);
+  ok('Video ist abrufbar', datei.status === 200);
+  ok('Video hat die volle Grösse',
+    Number(datei.headers.get('content-length')) === gross.length,
+    datei.headers.get('content-length'));
+
+  // Vorschaubild muss unabhängig vom Video existieren – auch wenn der
+  // Browser kein Standbild gewinnen konnte, wird ein Platzhalter geschickt.
+  ok('Vorschaubild liegt vor', (await fetch(`${base}/i/${id}-d.jpg`)).status === 200);
+  ok('Video landet nicht in der Ambient-Rotation der Fotowand',
+    p?.kind !== 'photo');
 }

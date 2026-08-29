@@ -7,6 +7,7 @@
   var JPEG_Q = 0.82;
   var MAX_PHOTO_ORIG = 50 * 1024 * 1024;
   var MAX_VIDEO_ORIG = 300 * 1024 * 1024;
+  var VIDEO_FRAME_MS = 25000;   // Standbild: Handys brauchen deutlich länger
 
   var elName = document.getElementById('name');
   var elCaption = document.getElementById('caption');
@@ -129,6 +130,7 @@
       case 'meta': return (item.serverArchive ? '📼 als Foto von früher erkannt · ' : '')
         + '✓ auf der Fotowand – Original folgt …';
       case 'done':
+        if (item.posterFallback) return '✓ Video gespeichert (ohne Vorschaubild)';
         if (item.serverArchive) return '📼 als Foto von früher gespeichert';
         if (item.skipOriginal) return '✓ geteilt (Datei zu gross fürs Original)';
         if (item.originalLost) return '✓ geteilt (Original nicht mehr verfügbar)';
@@ -197,8 +199,13 @@
   }
 
   function scaled(source, sw, sh, maxEdge, q) {
+    // Ohne gemeldete Grösse entstünde ein 0x0-Canvas – toBlob liefert dafür
+    // null, und der Upload wäre verloren.
+    sw = Math.max(1, Math.round(sw) || 1);
+    sh = Math.max(1, Math.round(sh) || 1);
     var f = Math.min(1, maxEdge / Math.max(sw, sh));
-    var w = Math.round(sw * f), h = Math.round(sh * f);
+    var w = Math.max(1, Math.round(sw * f));
+    var h = Math.max(1, Math.round(sh * f));
     var c = document.createElement('canvas');
     c.width = w; c.height = h;
     c.getContext('2d').drawImage(source, 0, 0, w, h);
@@ -219,29 +226,114 @@
     });
   }
 
+  /* Ein Standbild aus dem Video holen – der fragilste Teil der ganzen
+   * Upload-Strecke. Browser verhalten sich beim Suchen in einer lokalen
+   * Datei sehr unterschiedlich: iOS gibt ohne kurzes Abspielen oft kein
+   * dekodiertes Bild heraus, manche Codecs (HEVC in Chrome) lassen sich gar
+   * nicht öffnen, und grosse Dateien brauchen auf einem Handy deutlich
+   * länger als ein paar Sekunden.
+   */
   function captureVideoFrame(file) {
     return new Promise(function (resolve, reject) {
       var url = URL.createObjectURL(file);
       var v = document.createElement('video');
       v.muted = true;
+      v.defaultMuted = true;
       v.playsInline = true;
+      v.setAttribute('playsinline', '');
+      v.setAttribute('muted', '');
       v.preload = 'auto';
-      var to = setTimeout(function () { fail(); }, 8000);
-      function fail() {
+      // Manche Browser dekodieren nur, wenn das Element im Dokument hängt.
+      v.style.cssText =
+        'position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0';
+      document.body.appendChild(v);
+
+      var done = false;
+      var to = setTimeout(function () { finish(false); }, VIDEO_FRAME_MS);
+
+      function cleanup() {
         clearTimeout(to);
+        try { v.pause(); } catch (e) { /* egal */ }
+        v.removeAttribute('src');
+        try { v.load(); } catch (e) { /* egal */ }
+        if (v.parentNode) v.parentNode.removeChild(v);
         URL.revokeObjectURL(url);
-        reject(new Error('Video-Vorschau fehlgeschlagen'));
       }
-      v.onerror = fail;
+
+      function finish(ok) {
+        if (done) return;
+        done = true;
+        var w = v.videoWidth || 0;
+        var h = v.videoHeight || 0;
+        if (!ok || !w || !h) {
+          cleanup();
+          reject(new Error('kein Standbild'));
+          return;
+        }
+        // Bild sofort sichern, bevor Element und Object-URL wegfallen.
+        var shot = document.createElement('canvas');
+        shot.width = w;
+        shot.height = h;
+        try {
+          shot.getContext('2d').drawImage(v, 0, 0, w, h);
+        } catch (e) {
+          cleanup();
+          reject(new Error('kein Standbild'));
+          return;
+        }
+        cleanup();
+        resolve({ source: shot, w: w, h: h });
+      }
+
+      function seek() {
+        var d = (isFinite(v.duration) && v.duration > 0) ? v.duration : 1;
+        var target = Math.min(0.6, d / 2);
+        if (Math.abs(v.currentTime - target) < 0.05) finish(true);
+        else {
+          try { v.currentTime = target; } catch (e) { finish(true); }
+        }
+      }
+
+      v.onerror = function () { finish(false); };
+      v.onseeked = function () { finish(true); };
       v.onloadeddata = function () {
-        v.currentTime = Math.min(0.5, (v.duration || 1) / 2);
+        // iOS gibt erst nach kurzem Abspielen ein dekodiertes Bild heraus.
+        var p;
+        try { p = v.play(); } catch (e) { p = null; }
+        if (p && p.then) {
+          p.then(function () {
+            setTimeout(function () {
+              try { v.pause(); } catch (e) { /* egal */ }
+              seek();
+            }, 150);
+          }).catch(seek);
+        } else {
+          seek();
+        }
       };
-      v.onseeked = function () {
-        clearTimeout(to);
-        resolve({ video: v, url: url, w: v.videoWidth, h: v.videoHeight });
-      };
+
       v.src = url;
+      try { v.load(); } catch (e) { /* egal */ }
     });
+  }
+
+  // Ersatz-Vorschaubild, falls sich kein Standbild gewinnen lässt.
+  // Lieber ein Video ohne schönes Vorschaubild als gar kein Video.
+  function placeholderPoster() {
+    var W = 1200, H = 900;
+    var c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    var g = c.getContext('2d');
+    g.fillStyle = '#1d2026';
+    g.fillRect(0, 0, W, H);
+    g.textAlign = 'center';
+    g.fillStyle = '#d4af6a';
+    g.font = '170px system-ui, -apple-system, sans-serif';
+    g.fillText('🎬', W / 2, H / 2 + 20);
+    g.fillStyle = '#9aa0aa';
+    g.font = '46px system-ui, -apple-system, sans-serif';
+    g.fillText('Video', W / 2, H / 2 + 130);
+    return { source: c, w: W, h: H };
   }
 
   function processFile(file, uploader, caption, challengeId) {
@@ -271,15 +363,18 @@
 
     var prep;
     if (isVideo) {
-      prep = captureVideoFrame(file).then(function (r) {
-        return Promise.all([
-          scaled(r.video, r.w, r.h, MAX_DISPLAY, JPEG_Q),
-          scaled(r.video, r.w, r.h, MAX_THUMB, 0.7),
-        ]).then(function (res) {
-          URL.revokeObjectURL(r.url);
-          return res;
+      prep = captureVideoFrame(file)
+        .catch(function () {
+          // Kein Standbild zu bekommen – trotzdem hochladen.
+          item.posterFallback = true;
+          return placeholderPoster();
+        })
+        .then(function (r) {
+          return Promise.all([
+            scaled(r.source, r.w, r.h, MAX_DISPLAY, JPEG_Q),
+            scaled(r.source, r.w, r.h, MAX_THUMB, 0.7),
+          ]);
         });
-      });
     } else {
       prep = loadImage(file).then(function (r) {
         var w = r.img.naturalWidth, h = r.img.naturalHeight;
