@@ -855,6 +855,7 @@ body.galerie .favhead { font-size: 1.05rem; }
    =================================================================== */
 
 body.sichten {
+  height: 100vh;            /* Rückfall für ältere Browser */
   height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -863,40 +864,44 @@ body.sichten {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* ---- Kopfzeile: Fortschritt und Filter, bewusst flach ---- */
 .si-kopf {
   flex: none;
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 7px 12px;
+  min-width: 0;
 }
 
-.si-fortschritt { display: flex; gap: 10px; align-items: baseline; }
-.si-fortschritt #siPos { font-weight: 600; }
-.si-offen { color: var(--accent); font-size: .85rem; }
+.si-fortschritt {
+  display: flex;
+  gap: 4px 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  min-width: 0;
+}
 
-.si-filter { display: flex; gap: 8px; align-items: center; }
+.si-fortschritt #siPos { font-weight: 600; font-size: .95rem; white-space: nowrap; }
+.si-offen { color: var(--accent); font-size: .82rem; white-space: nowrap; }
+
+.si-filter { display: flex; gap: 6px; align-items: center; min-width: 0; }
 
 .si-filter select {
-  padding: 8px 10px;
-  border-radius: 10px;
+  min-width: 0;
+  padding: 7px 9px;
+  border-radius: 9px;
   border: 1px solid #3a3f48;
   background: var(--card2);
   color: var(--text);
-  font-size: .88rem;
-  max-width: 42vw;
+  font-size: .84rem;
+  max-width: 34vw;
 }
 
-.si-filter .btn { padding: 8px 12px; }
+.si-filter .btn { padding: 7px 11px; }
 
-/* Fortschrittsbalken */
-.si-balken {
-  flex: none;
-  height: 3px;
-  background: #2a2f37;
-}
+.si-balken { flex: none; height: 3px; background: #2a2f37; }
 
 .si-balken > div {
   height: 100%;
@@ -905,21 +910,27 @@ body.sichten {
   transition: width .2s ease;
 }
 
-/* Bühne: nimmt allen verbleibenden Platz ein */
+/* ---- Bühne ----
+   min-height: 0 ist hier entscheidend. Ohne diese Zeile darf ein
+   Flex-Element nicht unter seine Inhaltsgrösse schrumpfen – die Bühne
+   würde also so hoch wie das Bild und schöbe die Fusszeile aus dem Bild.
+   Und .si-medium braucht eine ECHTE Höhe (height, nicht max-height),
+   sonst hat das max-height: 100% am Bild keinen Bezugswert und wird
+   stillschweigend ignoriert. Genau daran war das Bild zu gross. */
 .si-buehne {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px;
-  position: relative;
+  padding: 6px;
 }
 
 .si-medium {
   position: relative;
-  max-width: 100%;
-  max-height: 100%;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -929,32 +940,37 @@ body.sichten {
 .si-medium video {
   max-width: 100%;
   max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
   border-radius: 8px;
   display: block;
 }
 
 .si-medium.aussortiert img,
-.si-medium.aussortiert video { opacity: .35; }
+.si-medium.aussortiert video { opacity: .3; }
 
 .si-marke {
   position: absolute;
   top: 10px;
-  left: 10px;
+  left: 50%;
+  transform: translateX(-50%);
   background: rgba(74, 42, 36, .95);
   color: var(--err);
   border-radius: 999px;
-  padding: 6px 14px;
+  padding: 6px 16px;
   font-size: .9rem;
+  white-space: nowrap;
 }
 
 .si-leer { text-align: center; padding: 20px; }
 .si-leer .big { font-size: 3rem; color: var(--ok); }
 .si-leer h2 { margin: 6px 0; }
 
-/* Fusszeile mit den Aktionen */
+/* ---- Fusszeile mit den Aktionen ---- */
 .si-fuss {
   flex: none;
-  padding: 8px 12px 12px;
+  padding: 8px 12px 10px;
   border-top: 1px solid #2a2f37;
   background: var(--bg);
 }
@@ -962,10 +978,11 @@ body.sichten {
 .si-info {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
+  gap: 2px 12px;
   justify-content: center;
-  font-size: .88rem;
+  font-size: .86rem;
   margin-bottom: 8px;
+  line-height: 1.35;
 }
 
 .si-wer { color: var(--text); }
@@ -974,50 +991,96 @@ body.sichten {
 
 .si-knoepfe {
   display: flex;
-  gap: 8px;
+  gap: 7px;
   justify-content: center;
-  flex-wrap: wrap;
+  align-items: stretch;
 }
 
-.si-knoepfe .btn { padding: 13px 18px; font-size: .95rem; }
-.si-knoepfe #siBehalten { flex: 1; max-width: 260px; }
-.si-knoepfe #siWeg { flex: 1; max-width: 220px; }
+.si-knoepfe .btn {
+  padding: 12px 14px;
+  font-size: .92rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* Die beiden Hauptknöpfe dürfen den Platz nehmen, den es gibt. */
+.si-knoepfe #siWeg { flex: 1 1 0; max-width: 230px; }
+.si-knoepfe #siBehalten { flex: 1 1 0; max-width: 250px; }
+.si-knoepfe #siZurueck, .si-knoepfe #siFav { flex: none; min-width: 52px; }
+
+/* Tastenkürzel direkt im Knopf – so muss sie niemand auswendig lernen. */
+kbd {
+  font-family: inherit;
+  font-size: .76em;
+  font-weight: 600;
+  background: rgba(0, 0, 0, .3);
+  border-radius: 5px;
+  padding: 2px 6px;
+  opacity: .9;
+}
 
 .si-zweite {
   display: flex;
-  gap: 8px;
+  gap: 7px;
   justify-content: center;
   align-items: center;
-  margin-top: 8px;
+  margin-top: 7px;
   flex-wrap: wrap;
 }
 
 .si-zweite select {
-  padding: 9px 12px;
+  padding: 9px 11px;
   border-radius: 10px;
   border: 1px solid #3a3f48;
   background: var(--card2);
   color: var(--text);
-  font-size: .9rem;
-  max-width: 55vw;
+  font-size: .88rem;
+  max-width: 50vw;
 }
 
+.si-zweite .btn { padding: 9px 13px; font-size: .88rem; }
+
+/* Die Übersicht steht auf breiten Schirmen dauerhaft da – dort gibt es
+   eine Tastatur. Auf dem Handy blendet sie der ⌨️-Knopf ein. */
 .si-tasten {
+  display: none;
   text-align: center;
   color: var(--muted);
   font-size: .8rem;
-  margin: 10px 0 0;
+  margin: 9px 0 0;
+  line-height: 1.9;
 }
 
-.si-tasten b {
-  color: var(--text);
+.si-tasten.zeigen { display: block; }
+
+.si-tasten kbd {
   background: var(--card2);
-  border-radius: 5px;
-  padding: 1px 6px;
-  font-weight: 600;
+  color: var(--text);
+  margin-right: 3px;
 }
 
-/* Auf breiten Schirmen ist mehr Luft für die Knöpfe */
-@media (min-width: 700px) {
-  .si-knoepfe .btn { padding: 14px 24px; font-size: 1rem; }
+@media (min-width: 760px) {
+  .si-tasten { display: block; }
+  .si-knoepfe .btn { padding: 13px 20px; font-size: .98rem; }
+  .si-kopf { padding: 10px 16px; }
+  .si-filter select { max-width: 200px; font-size: .9rem; }
+}
+
+/* Sehr niedrige Fenster (Handy quer): Beiwerk zusammenstreichen,
+   damit fürs Bild etwas übrig bleibt. */
+@media (max-height: 520px) {
+  .si-info { display: none; }
+  .si-zweite { display: none; }
+  .si-tasten { display: none; }
+  .si-fuss { padding: 6px 10px 8px; }
+  .si-knoepfe .btn { padding: 9px 12px; font-size: .88rem; }
+}
+
+/* Auf der Sichten-Seite ist unten kein Platz – Meldung nach oben. */
+body.sichten .toast {
+  top: calc(52px + env(safe-area-inset-top));
+  bottom: auto;
 }

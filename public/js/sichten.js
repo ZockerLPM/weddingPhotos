@@ -113,8 +113,6 @@
 
   // ------------------------------------------------------------ Anzeige
 
-  var aktuelleUrl = null;
-
   function zeichnen() {
     var p = liste[pos];
     var leer = !p;
@@ -179,7 +177,7 @@
     el('siKat').textContent = k ? k.icon + ' ' + k.name : '';
     el('siKatWahl').value = p.category || '';
     el('siFav').classList.toggle('active-state', !!p.favorite);
-    el('siFav').textContent = p.favorite ? '★' : '☆';
+    el('siFavIcon').textContent = p.favorite ? '★' : '☆';
 
     vorladen();
   }
@@ -293,7 +291,7 @@
     kategorieSetzen(this.value);
   });
   el('siHilfe').addEventListener('click', function () {
-    el('siTasten').classList.toggle('hidden');
+    el('siTasten').classList.toggle('zeigen');
   });
   el('siFilter').addEventListener('change', function () { neuAufbauen(null); });
   el('siGast').addEventListener('change', function () { neuAufbauen(null); });
