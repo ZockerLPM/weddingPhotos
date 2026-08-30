@@ -15,6 +15,7 @@ alles als ZIP.
 | `/box` | Erzählecke: Videobotschaften aufnehmen | Tablet in einer ruhigen Ecke |
 | `/galerie` | Galerie mit Download – gesperrt bis zur Freischaltung | alle Gäste, nach dem Fest |
 | `/mod#SCHLÜSSEL` | Moderation: ausblenden, Fotowand steuern, Rückblick, Galerie öffnen | Trauzeuge/in |
+| `/sichten` | Sichten nach der Feier – Vollbild, Tastatur, Aussortieren | Brautpaar |
 
 ## Wie es funktioniert
 
@@ -223,9 +224,39 @@ In der Moderation unter **🧹 Nach der Feier**. Sinnvolle Reihenfolge:
 
 **1. Backup ziehen.** Ausblenden ist umkehrbar, endgültiges Löschen nicht.
 
-**2. Aussortieren.** Auf jeder Kachel liegt ein **★** für Lieblingsbilder und
-der 🕐/📼-Schalter für die Einordnung; ein Tipp auf die Kachel blendet aus.
-Zwei Helfer beschleunigen das erheblich:
+**2. Aussortieren – am besten unter [`/sichten`](public/sichten.html).**
+Die Seite zeigt eine Aufnahme gross und ist auf die Tastatur hin gebaut:
+
+| Taste | Wirkung |
+|---|---|
+| **→** (oder Leertaste) | behalten und weiter |
+| **←** | zurück |
+| **X** (oder Entf) | aussortieren und weiter |
+| **F** | Favorit umschalten |
+| **Z** | letzte Aktion rückgängig |
+| **1–9** | Kategorie setzen · **0** = keine |
+
+Mit Pfeiltaste und X kommt man durch 871 Aufnahmen in etwa zwanzig Minuten,
+statt eine Stunde auf Kacheln zu zielen. Auf dem Handy geht es auch per
+Wischen: nach links behalten, nach rechts zurück.
+
+Dazu drei Dinge, die den Durchlauf angenehm machen:
+
+- **Gesichtet-Merker** in der Datenbank (`reviewed`). Ihr könnt jederzeit
+  abbrechen und später weitermachen – oben steht „noch 340 offen".
+- **Filter**: noch nicht gesichtet · alle · nur Videos · nur Altfotos ·
+  nur Favoriten · nur Aussortierte, dazu ein Personenfilter.
+- **Vorladen** der nächsten drei Aufnahmen, sonst ruckelt das Blättern.
+
+**Zwei können parallel sichten** – über den Ereigniskanal kommt an, was die
+andere Seite gerade entschieden hat.
+
+Jede Aktion ist genau eine Anfrage (`/api/mod/sichten`); bei 871 Fotos
+summieren sich zwei Anfragen je Bild sonst spürbar.
+
+**Alternativ in der Moderation:** Auf jeder Kachel liegt ein **★** für
+Lieblingsbilder und der 🕐/📼-Schalter für die Einordnung; ein Tipp auf die
+Kachel blendet aus. Zwei Helfer beschleunigen das zusätzlich:
 
 - **🎞️ Serien finden** – Aufnahmen desselben Gasts innerhalb von zehn
   Sekunden werden gruppiert („4 Aufnahmen von Werner um 21:34, in 6 s").
@@ -323,14 +354,15 @@ npm test
 ```
 
 Startet für jede Suite einen eigenen Server mit temporärem Datenverzeichnis
-und prüft 206 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
+und prüft 219 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
 bekannten Metadaten), Grundfunktionen (Upload, Moderation, Galerie, ZIP,
 Fehlerfälle), die Upload-Warteschlange inklusive nachgebautem iOS-Verhalten,
 die Abendfunktionen, Altfoto-Erkennung und Aufgaben-Editor sowie die
 Übereinstimmung von Datenbank und Dateien, die gesamte Nachbereitung –
 Serien, Duplikate, Favoriten, Paketbau, fortsetzbare Downloads und
 endgültiges Löschen –, das stückweise Nachreichen grosser Originale sowie
-Kategorien und Auswahl-Downloads. Vor jedem Deploy einmal laufen lassen.
+Kategorien, Auswahl-Downloads und die Sichtungs-Seite.
+Vor jedem Deploy einmal laufen lassen.
 
 ## Projektstruktur
 
@@ -348,6 +380,7 @@ public/           Frontend, reines HTML/CSS/JS ohne Build-Schritt
   show.html       Fotowand + Rückblick    + js/show.js
   box.html        Erzählecke              + js/box.js
   galerie.html    Galerie (handy-zuerst)  + js/gallery.js
+  sichten.html    Sichten mit Tastatur    + js/sichten.js
   mod.html        Moderation              + js/mod.js
   js/challenges.js  lädt die Aufgabenliste vom Server, von mehreren Seiten genutzt
   js/exif.js        liest den Aufnahmezeitpunkt aus den Bild-Metadaten

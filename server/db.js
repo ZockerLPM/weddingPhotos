@@ -74,6 +74,8 @@ ensureColumn('photos', 'favorite', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('photos', 'sha256', 'TEXT');
 // Kategorie für die Filterleiste der Galerie (Trauung, Essen, …).
 ensureColumn('photos', 'category', 'TEXT');
+// Merker fürs Sichten: erlaubt abzubrechen und später weiterzumachen.
+ensureColumn('photos', 'reviewed', 'INTEGER NOT NULL DEFAULT 0');
 db.exec('CREATE INDEX IF NOT EXISTS idx_photos_sha ON photos(sha256)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_photos_cat ON photos(category)');
 
@@ -116,6 +118,9 @@ const stmt = {
     `UPDATE photos SET archive = ?, effective_at = ? WHERE id = ?`),
   setFavorite: db.prepare(`UPDATE photos SET favorite = ? WHERE id = ?`),
   setCategory: db.prepare(`UPDATE photos SET category = ? WHERE id = ?`),
+  setReviewed: db.prepare(`UPDATE photos SET reviewed = ? WHERE id = ?`),
+  countOffen: db.prepare(
+    `SELECT COUNT(*) AS n FROM photos WHERE reviewed = 0`),
   // Zeitraum-Zuordnung: bei 800 Fotos deutlich schneller als einzeln.
   setCategoryZeitraum: db.prepare(
     `UPDATE photos SET category = ?
@@ -195,6 +200,8 @@ export function setArchive(id, archive, effectiveAt) {
 export function listVisible() { return stmt.listVisible.all(); }
 export function setFavorite(id, fav) { stmt.setFavorite.run(fav ? 1 : 0, id); }
 export function setCategory(id, cat) { stmt.setCategory.run(cat || null, id); }
+export function setReviewed(id, v) { stmt.setReviewed.run(v ? 1 : 0, id); }
+export function countOffen() { return stmt.countOffen.get().n; }
 export function setCategoryZeitraum(cat, von, bis) {
   return stmt.setCategoryZeitraum.run(cat || null, von, bis).changes;
 }

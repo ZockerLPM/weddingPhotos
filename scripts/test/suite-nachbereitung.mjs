@@ -201,6 +201,7 @@ export default async function run({ base, key, ok, dataDir }) {
 
   await modFetch(base, key, '/api/mod/gallery', { open: false });
   await nachreichen({ base, key, ok, dataDir });
+  await sichten({ base, key, ok });
 }
 
 /* Grosse Originale nachreichen.
@@ -304,4 +305,71 @@ export async function nachreichen({ base, key, ok, dataDir }) {
   let tmp = [];
   try { tmp = fs.readdirSync(path.join(dataDir, 'tmp')); } catch { /* egal */ }
   ok('Kein Rest im tmp-Verzeichnis', tmp.length === 0, tmp.join(', '));
+}
+
+/* Die Sichtungs-Seite und ihr Sammel-Endpunkt. */
+export async function sichten({ base, key, ok }) {
+  const modGet3 = (pfad) =>
+    fetch(base + pfad, { headers: { 'x-mod-key': key } }).then((r) => r.json());
+
+  const seite = await fetch(base + '/sichten');
+  const html = await seite.text();
+  ok('Seite /sichten lädt', seite.status === 200 && html.includes('siBuehne'));
+
+  const a = await uploadPhoto(base, { who: 'Sichter', takenAt: Date.now() - 60000 });
+  const b = await uploadPhoto(base, { who: 'Sichter', takenAt: Date.now() - 30000 });
+  await wait(200);
+
+  const vorher = await modGet3('/api/mod/list?limit=5000');
+  ok('Neue Aufnahmen gelten als ungesichtet',
+    vorher.photos.find((p) => p.id === a.body.id)?.reviewed === false);
+  ok('Die Liste meldet die offene Anzahl', typeof vorher.offen === 'number',
+    'offen=' + vorher.offen);
+
+  // Behalten: gesichtet, bleibt sichtbar
+  const behalten = await (await modFetch(base, key, '/api/mod/sichten',
+    { id: a.body.id, reviewed: true, hidden: false })).json();
+  ok('Behalten markiert als gesichtet',
+    behalten.photo.reviewed === true && behalten.photo.hidden !== true);
+  ok('Der Zähler der offenen sinkt', behalten.offen === vorher.offen - 1,
+    behalten.offen + ' statt ' + (vorher.offen - 1));
+
+  // Aussortieren: gesichtet und ausgeblendet, in einem Zug
+  const weg = await (await modFetch(base, key, '/api/mod/sichten',
+    { id: b.body.id, reviewed: true, hidden: true })).json();
+  ok('Aussortieren blendet aus und markiert', weg.photo.reviewed === true);
+  await wait(200);
+  const feed = await (await fetch(base + '/api/feed')).json();
+  ok('Das Aussortierte verschwindet aus der Galerie',
+    !feed.photos.some((p) => p.id === b.body.id));
+
+  // Favorit und Kategorie über denselben Endpunkt
+  const fav = await (await modFetch(base, key, '/api/mod/sichten',
+    { id: a.body.id, favorite: true, category: 'trauung' })).json();
+  ok('Favorit und Kategorie in einem Zug',
+    fav.photo.favorite === true && fav.photo.category === 'trauung');
+
+  // Rückgängig: alter Zustand wird wiederhergestellt
+  const zurueck = await (await modFetch(base, key, '/api/mod/sichten',
+    { id: b.body.id, reviewed: false, hidden: false })).json();
+  ok('Rückgängig stellt den alten Zustand her',
+    zurueck.photo.reviewed === false && zurueck.photo.hidden !== true);
+
+  // Nur mitgeschickte Felder werden angefasst
+  const nurFav = await (await modFetch(base, key, '/api/mod/sichten',
+    { id: a.body.id, favorite: false })).json();
+  ok('Nicht mitgeschickte Felder bleiben unberührt',
+    nurFav.photo.category === 'trauung' && nurFav.photo.reviewed === true);
+
+  ok('Unbekannte Kategorie wird abgewiesen',
+    (await modFetch(base, key, '/api/mod/sichten',
+      { id: a.body.id, category: 'gibtsnicht' })).status === 400);
+  ok('Unbekannte ID wird abgewiesen',
+    (await modFetch(base, key, '/api/mod/sichten',
+      { id: '01ZZZZZZZZZZZZZZZZZZZZZZZZ', reviewed: true })).status === 404);
+  ok('Sichten braucht den Schlüssel',
+    (await fetch(base + '/api/mod/sichten', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: a.body.id, reviewed: true }),
+    })).status === 401);
 }

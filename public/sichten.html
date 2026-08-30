@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Sichten</title>
+  <link rel="stylesheet" href="/app.css">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+</head>
+<body class="sichten">
+
+<div class="si-kopf">
+  <div class="si-fortschritt">
+    <span id="siPos">–</span>
+    <span class="si-offen" id="siOffen"></span>
+  </div>
+  <div class="si-filter">
+    <select id="siFilter" aria-label="Auswahl">
+      <option value="offen">Noch nicht gesichtet</option>
+      <option value="alle">Alle</option>
+      <option value="video">Nur Videos</option>
+      <option value="archiv">Nur Altfotos</option>
+      <option value="favorit">Nur Favoriten</option>
+      <option value="versteckt">Nur Aussortierte</option>
+    </select>
+    <select id="siGast" aria-label="Person"><option value="">Alle Gäste</option></select>
+    <a class="btn" href="/mod" title="Zurück zur Moderation">✕</a>
+  </div>
+</div>
+
+<div class="si-balken"><div id="siBalken"></div></div>
+
+<main class="si-buehne" id="siBuehne">
+  <div class="si-leer hidden" id="siLeer">
+    <div class="big">✓</div>
+    <h2 id="siLeerTitel">Alles gesichtet</h2>
+    <p class="hint" id="siLeerText">Hier ist gerade nichts zu tun – andere Auswahl probieren.</p>
+    <p><a class="btn" href="/mod">Zurück zur Moderation</a></p>
+  </div>
+</main>
+
+<div class="si-fuss" id="siFuss">
+  <div class="si-info">
+    <span class="si-wer" id="siWer"></span>
+    <span class="si-wann" id="siWann"></span>
+    <span class="si-kat" id="siKat"></span>
+  </div>
+
+  <div class="si-knoepfe">
+    <button class="btn" id="siZurueck" title="Zurück (←)">←</button>
+    <button class="btn danger" id="siWeg" title="Aussortieren (X)">✕ aussortieren</button>
+    <button class="btn" id="siFav" title="Favorit (F)">★</button>
+    <button class="btn primary" id="siBehalten" title="Behalten und weiter (→)">✓ behalten →</button>
+  </div>
+
+  <div class="si-zweite">
+    <select id="siKatWahl" aria-label="Kategorie setzen"></select>
+    <button class="btn" id="siUndo" title="Rückgängig (Z)">↶ rückgängig</button>
+    <button class="btn" id="siHilfe" title="Tastenbelegung">⌨️</button>
+  </div>
+
+  <p class="si-tasten hidden" id="siTasten">
+    <b>→</b> behalten &amp; weiter · <b>←</b> zurück · <b>X</b> aussortieren ·
+    <b>F</b> Favorit · <b>Z</b> rückgängig · <b>1–9</b> Kategorie · <b>0</b> keine
+  </p>
+</div>
+
+<div class="toast hidden" id="toast"></div>
+
+<script src="/js/sichten.js"></script>
+</body>
+</html>

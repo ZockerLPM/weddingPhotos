@@ -74,6 +74,7 @@ function rowToPublic(r) {
     archive: !!r.archive,
     favorite: !!r.favorite,
     category: r.category || null,
+    reviewed: !!r.reviewed,
     effectiveAt: r.effective_at || r.uploaded_at,
     timeSource: r.time_source || 'datei',
     w: r.width,
@@ -525,6 +526,40 @@ setInterval(() => {
   }
 }, 30 * 60 * 1000).unref();
 
+/* Eine Sichtungs-Aktion in einem Zug.
+ *
+ * Der Viewer soll pro Tastendruck genau eine Anfrage stellen – bei 871
+ * Fotos summieren sich zwei Anfragen je Bild sonst spürbar. Angewendet
+ * wird nur, was mitgeschickt wurde; fehlende Felder bleiben unberührt.
+ */
+app.post('/api/mod/sichten', modAuth, (req, res) => {
+  const id = str(req.body.id, 26);
+  if (!db.byId(id)) return res.status(404).json({ error: 'unbekannt' });
+
+  if (typeof req.body.hidden === 'boolean') db.setHidden(id, req.body.hidden);
+  if (typeof req.body.favorite === 'boolean') db.setFavorite(id, req.body.favorite);
+  if (typeof req.body.reviewed === 'boolean') db.setReviewed(id, req.body.reviewed);
+
+  if ('category' in req.body) {
+    const kat = str(req.body.category, 40) || null;
+    if (kat && !getKategorien().some((k) => k.id === kat)) {
+      return res.status(400).json({ error: 'unbekannte Kategorie' });
+    }
+    db.setCategory(id, kat);
+  }
+
+  const photo = rowToPublic(db.byId(id));
+  // Die Fotowand hört auf 'hide', alle anderen Ansichten auf 'update'.
+  if (typeof req.body.hidden === 'boolean') {
+    sse.emit('hide', {
+      id, hidden: req.body.hidden,
+      photo: req.body.hidden ? undefined : photo,
+    });
+  }
+  sse.emit('update', photo);
+  res.json({ ok: true, photo, offen: db.countOffen() });
+});
+
 app.get('/api/mod/fehlende-originale', modAuth, (req, res) => {
   res.json({ eintraege: db.ohneOriginal().map(rowToPublic) });
 });
@@ -687,6 +722,7 @@ app.get('/api/mod/list', modAuth, (req, res) => {
     ...fullState(),
     hiddenCount: db.countHidden(),
     total: db.countAll(),          // damit eine Kürzung sichtbar wird
+    offen: db.countOffen(),        // noch nicht gesichtet
     shown: rows.length,
     photos: rows.map(r => ({ ...rowToPublic(r), hidden: !!r.hidden })),
   });

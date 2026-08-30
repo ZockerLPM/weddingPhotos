@@ -849,3 +849,175 @@ body.galerie .favhead { font-size: 1.05rem; }
 }
 
 .chip b { color: var(--text); }
+
+/* ===================================================================
+   Sichten – Vollbild-Durchlauf mit Tastatur
+   =================================================================== */
+
+body.sichten {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.si-kopf {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+}
+
+.si-fortschritt { display: flex; gap: 10px; align-items: baseline; }
+.si-fortschritt #siPos { font-weight: 600; }
+.si-offen { color: var(--accent); font-size: .85rem; }
+
+.si-filter { display: flex; gap: 8px; align-items: center; }
+
+.si-filter select {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #3a3f48;
+  background: var(--card2);
+  color: var(--text);
+  font-size: .88rem;
+  max-width: 42vw;
+}
+
+.si-filter .btn { padding: 8px 12px; }
+
+/* Fortschrittsbalken */
+.si-balken {
+  flex: none;
+  height: 3px;
+  background: #2a2f37;
+}
+
+.si-balken > div {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width .2s ease;
+}
+
+/* Bühne: nimmt allen verbleibenden Platz ein */
+.si-buehne {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  position: relative;
+}
+
+.si-medium {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.si-medium img,
+.si-medium video {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+  display: block;
+}
+
+.si-medium.aussortiert img,
+.si-medium.aussortiert video { opacity: .35; }
+
+.si-marke {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(74, 42, 36, .95);
+  color: var(--err);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: .9rem;
+}
+
+.si-leer { text-align: center; padding: 20px; }
+.si-leer .big { font-size: 3rem; color: var(--ok); }
+.si-leer h2 { margin: 6px 0; }
+
+/* Fusszeile mit den Aktionen */
+.si-fuss {
+  flex: none;
+  padding: 8px 12px 12px;
+  border-top: 1px solid #2a2f37;
+  background: var(--bg);
+}
+
+.si-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  justify-content: center;
+  font-size: .88rem;
+  margin-bottom: 8px;
+}
+
+.si-wer { color: var(--text); }
+.si-wann { color: var(--muted); }
+.si-kat { color: var(--accent); }
+
+.si-knoepfe {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.si-knoepfe .btn { padding: 13px 18px; font-size: .95rem; }
+.si-knoepfe #siBehalten { flex: 1; max-width: 260px; }
+.si-knoepfe #siWeg { flex: 1; max-width: 220px; }
+
+.si-zweite {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.si-zweite select {
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid #3a3f48;
+  background: var(--card2);
+  color: var(--text);
+  font-size: .9rem;
+  max-width: 55vw;
+}
+
+.si-tasten {
+  text-align: center;
+  color: var(--muted);
+  font-size: .8rem;
+  margin: 10px 0 0;
+}
+
+.si-tasten b {
+  color: var(--text);
+  background: var(--card2);
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-weight: 600;
+}
+
+/* Auf breiten Schirmen ist mehr Luft für die Knöpfe */
+@media (min-width: 700px) {
+  .si-knoepfe .btn { padding: 14px 24px; font-size: 1rem; }
+}
