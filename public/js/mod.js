@@ -16,6 +16,7 @@
   }
 
   var state = { paused: false, mode: 'normal', galleryOpen: false };
+  var gesamt = 0;   // Gesamtzahl laut Server, um Kürzungen zu erkennen
   var photos = new Map(); // id -> Foto (inkl. hidden), neueste zuerst gerendert
   var health = null;
 
@@ -81,6 +82,9 @@
     elChips.appendChild(chip('Sichtbar:', String(visible)));
     elChips.appendChild(chip('Versteckt:', String(hidden)));
     if (altfotos) elChips.appendChild(chip('📼 Von früher:', String(altfotos)));
+    if (gesamt && gesamt > photos.size) {
+      elChips.appendChild(chip('⚠️ Nicht angezeigt:', String(gesamt - photos.size)));
+    }
     elChips.appendChild(chip('Fotowand:', state.paused ? '⏸ Pause' : '▶ läuft'));
     elChips.appendChild(chip('Modus:', state.mode === 'quiet' ? '🤫 Ruhe' : 'Normal'));
     elChips.appendChild(chip('Galerie:', state.galleryOpen ? '🔓 offen' : '🔒 zu'));
@@ -299,7 +303,7 @@
   // ------------------------------------------------------------ Laden & Live
 
   function load() {
-    return fetch('/api/mod/list?limit=500', { headers: { 'x-mod-key': key } })
+    return fetch('/api/mod/list?limit=2000', { headers: { 'x-mod-key': key } })
       .then(function (r) {
         if (r.status === 401) {
           localStorage.removeItem('modKey');
@@ -310,6 +314,7 @@
       })
       .then(function (d) {
         state = { paused: d.paused, mode: d.mode, galleryOpen: d.galleryOpen };
+        gesamt = d.total || 0;
         photos.clear();
         d.photos.forEach(function (p) { photos.set(p.id, p); });
         renderGrid();

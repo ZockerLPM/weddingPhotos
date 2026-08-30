@@ -17,6 +17,7 @@
   var elList = document.getElementById('list');
   var elStats = document.getElementById('stats');
   var elNet = document.getElementById('netbanner');
+  var elBusy = document.getElementById('busybanner');
   var elChalList = document.getElementById('chalList');
   var elChalProgress = document.getElementById('chalProgress');
 
@@ -127,8 +128,13 @@
     switch (item.state) {
       case 'processing': return 'wird verkleinert …';
       case 'new': return navigator.onLine ? '⬆️ lädt hoch …' : 'wartet auf Netz …';
-      case 'meta': return (item.serverArchive ? '📼 als Foto von früher erkannt · ' : '')
-        + '✓ auf der Fotowand – Original folgt …';
+      case 'meta':
+        var vorn = item.serverArchive ? '📼 von früher · ' : '';
+        if (item.progress > 0 && item.progress < 1) {
+          return vorn + '✓ auf der Fotowand – Original lädt ' +
+            Math.round(item.progress * 100) + ' % …';
+        }
+        return vorn + '✓ auf der Fotowand – Original folgt …';
       case 'done':
         if (item.posterFallback) return '✓ Video gespeichert (ohne Vorschaubild)';
         if (item.serverArchive) return '📼 als Foto von früher gespeichert';
@@ -181,6 +187,41 @@
   }
 
   UploadQueue.onChange(render);
+
+  /* Warnen, solange etwas unterwegs ist.
+   *
+   * Besonders wichtig für Videos: Das Original eines sehr grossen Videos
+   * liegt nur im Speicher dieser Sitzung. Wer die Seite schliesst, während
+   * es noch hochlädt, verliert es – das Foto steht dann zwar auf der
+   * Fotowand, das Video fehlt aber in der Galerie.
+   */
+  function offeneUploads() {
+    var n = 0;
+    for (var k in rowsState) {
+      var st = rowsState[k];
+      if (st === 'processing' || st === 'new' || st === 'meta') n++;
+    }
+    return n;
+  }
+
+  function zeigeOffene() {
+    var n = offeneUploads();
+    elBusy.classList.toggle('hidden', n === 0);
+    if (n > 0) {
+      elBusy.textContent = n === 1
+        ? '⬆️ Ein Upload läuft noch – bitte diese Seite offen lassen.'
+        : '⬆️ ' + n + ' Uploads laufen noch – bitte diese Seite offen lassen.';
+    }
+  }
+
+  UploadQueue.onChange(zeigeOffene);
+
+  window.addEventListener('beforeunload', function (e) {
+    if (offeneUploads() === 0) return;
+    e.preventDefault();
+    e.returnValue = '';   // ältere Browser brauchen das
+    return '';
+  });
 
   // Beim Laden: hängengebliebene Uploads anzeigen und weiterverarbeiten.
   UploadQueue.pending().then(function (items) {

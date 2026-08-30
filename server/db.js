@@ -102,6 +102,8 @@ const stmt = {
   markOriginal: db.prepare(
     `UPDATE photos SET has_original = 1, ext_original = ?, mime_original = ? WHERE id = ?`),
   setHidden: db.prepare(`UPDATE photos SET hidden = ? WHERE id = ?`),
+  deletePhoto: db.prepare(`DELETE FROM photos WHERE id = ?`),
+  countAll: db.prepare(`SELECT COUNT(*) AS n FROM photos`),
   setArchive: db.prepare(
     `UPDATE photos SET archive = ?, effective_at = ? WHERE id = ?`),
   listVisible: db.prepare(
@@ -150,6 +152,8 @@ export function byClientId(cid) { return stmt.byClientId.get(cid); }
 export function byId(id) { return stmt.byId.get(id); }
 export function markOriginal(id, ext, mime) { stmt.markOriginal.run(ext, mime, id); }
 export function setHidden(id, hidden) { stmt.setHidden.run(hidden ? 1 : 0, id); }
+export function deletePhoto(id) { stmt.deletePhoto.run(id); }
+export function countAll() { return stmt.countAll.get().n; }
 export function setArchive(id, archive, effectiveAt) {
   stmt.setArchive.run(archive ? 1 : 0, effectiveAt, id);
 }

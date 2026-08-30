@@ -149,7 +149,9 @@ app.post('/api/upload', upSmall.fields([
 
   // Idempotent: bei Wiederholung (Netz-Retry) existiert der Eintrag schon.
   const existing = db.byClientId(clientId);
-  if (existing) return res.json({ id: existing.id, existed: true });
+  if (existing) {
+    return res.json({ id: existing.id, existed: true, archive: !!existing.archive });
+  }
 
   // Vor dem Einfügen prüfen: ist das der allererste Beitrag dieser Person?
   // Daraus wird auf der Fotowand die namentliche Begrüssung.
@@ -178,9 +180,48 @@ app.post('/api/upload', upSmall.fields([
     timeSource: str(req.body.timeSource, 20) || 'datei',
   };
 
-  await fsp.writeFile(path.join(db.dirs.photos, `${id}-d.jpg`), display.buffer);
-  await fsp.writeFile(path.join(db.dirs.photos, `${id}-t.jpg`), thumb.buffer);
-  db.insertPhoto(row);
+  // Erst nach tmp schreiben, dann den Eintrag anlegen, dann an den
+  // endgültigen Platz schieben.
+  //
+  // Vorher wurden die Dateien direkt nach photos/ geschrieben und der
+  // Datenbankeintrag danach angelegt. Scheiterte der Eintrag – etwa weil
+  // zwei Wiederholversuche mit derselben clientId gleichzeitig ankamen und
+  // der UNIQUE-Index zuschlug – blieben die Dateien ohne Eintrag liegen:
+  // unsichtbar in Fotowand, Moderation und Galerie, aber voll auf der
+  // Platte. Umbenennen ist dagegen atomar und praktisch nicht zu verfehlen.
+  const zielD = path.join(db.dirs.photos, `${id}-d.jpg`);
+  const zielT = path.join(db.dirs.photos, `${id}-t.jpg`);
+  const tmpD = path.join(db.dirs.tmp, `${id}-d.jpg`);
+  const tmpT = path.join(db.dirs.tmp, `${id}-t.jpg`);
+
+  await fsp.writeFile(tmpD, display.buffer);
+  await fsp.writeFile(tmpT, thumb.buffer);
+
+  try {
+    db.insertPhoto(row);
+  } catch (e) {
+    await fsp.unlink(tmpD).catch(() => {});
+    await fsp.unlink(tmpT).catch(() => {});
+    // Zweiter Versuch mit derselben clientId war schneller – dessen
+    // Ergebnis zurückgeben statt einen Fehler zu melden.
+    const doppelt = db.byClientId(clientId);
+    if (doppelt) {
+      return res.json({ id: doppelt.id, existed: true, archive: !!doppelt.archive });
+    }
+    throw e;
+  }
+
+  try {
+    await fsp.rename(tmpD, zielD);
+    await fsp.rename(tmpT, zielT);
+  } catch (e) {
+    // Kein Eintrag ohne Bilder stehen lassen.
+    db.deletePhoto(id);
+    await fsp.unlink(tmpD).catch(() => {});
+    await fsp.unlink(tmpT).catch(() => {});
+    await fsp.unlink(zielD).catch(() => {});
+    throw e;
+  }
 
   sse.emit('photo', { ...rowToPublic(db.byId(id)), firstUpload });
   // archive zurückmelden, damit die Upload-Seite es dem Gast anzeigen kann.
@@ -204,8 +245,16 @@ app.post('/api/original/:id', upOriginal.single('original'), async (req, res) =>
 
   const ext = sanitizeExt(req.file.originalname)
     || (p.kind === 'video' ? 'mp4' : 'jpg');
-  await fsp.rename(req.file.path, path.join(db.dirs.photos, `${p.id}-o.${ext}`));
-  db.markOriginal(p.id, ext, str(req.file.mimetype, 100));
+  const ziel = path.join(db.dirs.photos, `${p.id}-o.${ext}`);
+  await fsp.rename(req.file.path, ziel);
+  try {
+    db.markOriginal(p.id, ext, str(req.file.mimetype, 100));
+  } catch (e) {
+    // Sonst läge das Original unbemerkt herum und die Galerie böte
+    // weiterhin nur das Anzeigebild an.
+    await fsp.unlink(ziel).catch(() => {});
+    throw e;
+  }
   res.json({ ok: true });
 });
 
@@ -410,10 +459,15 @@ app.post('/api/mod/gallery', modAuth, (req, res) => {
 });
 
 app.get('/api/mod/list', modAuth, (req, res) => {
-  const rows = db.listRecent(intOr(req.query.limit, 300));
+  // Vorher lag die Voreinstellung bei 300 und die Seite forderte 500 an –
+  // bei mehr Fotos fehlte der Rest in der Moderation kommentarlos.
+  const limit = Math.min(intOr(req.query.limit, 2000), 5000);
+  const rows = db.listRecent(limit);
   res.json({
     ...fullState(),
     hiddenCount: db.countHidden(),
+    total: db.countAll(),          // damit eine Kürzung sichtbar wird
+    shown: rows.length,
     photos: rows.map(r => ({ ...rowToPublic(r), hidden: !!r.hidden })),
   });
 });

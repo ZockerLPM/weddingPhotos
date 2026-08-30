@@ -144,6 +144,41 @@ Notiz („🎙️ Eine Botschaft von Werner"), **es wird kein Ton im Raum
 abgespielt**. Angeschaut werden die Botschaften in der Galerie.
 Braucht HTTPS – über `http://` verweigern Browser den Kamerazugriff.
 
+## Bestand prüfen
+
+Wenn im `data`-Ordner mehr zu liegen scheint, als in Fotowand und Galerie
+auftaucht: Es liegen **pro Foto bis zu drei Dateien** dort (`-d.jpg`
+Anzeigebild, `-t.jpg` Vorschau, `-o.*` Original). Die reine Dateizahl ist
+also normalerweise etwa dreimal so hoch wie die Zahl der Fotos.
+
+Für eine echte Prüfung gibt es [`scripts/check-data.cjs`](scripts/check-data.cjs):
+
+```bash
+# auf dem Server, im Container
+cd /opt/hochzeit/app
+docker compose exec -T -e DATA_DIR=/data app node < scripts/check-data.cjs
+```
+
+Der Bericht zeigt Einträge, Dateien und vor allem die Auffälligkeiten:
+Dateien ohne Datenbankeintrag (unsichtbar), nicht verknüpfte Originale,
+Einträge ohne Bild, Reste abgebrochener Uploads. Gefundene Probleme
+beheben:
+
+```bash
+docker compose exec -T -e DATA_DIR=/data -e REPAIR=1   -e ADOPT_NAME="Wiedergefunden" app node < scripts/check-data.cjs
+```
+
+REPAIR verknüpft herumliegende Originale wieder, nimmt verwaiste Bilder als
+Fotos auf (unter dem Namen aus `ADOPT_NAME`), entfernt tote
+Original-Verweise und räumt `tmp/` auf. Danach in der Moderation
+**Fotowand neu laden** drücken.
+
+Dasselbe geht auch lokal gegen einen Backup-Ordner:
+
+```bash
+DATA_DIR=~/hochzeit-backup node scripts/check-data.cjs
+```
+
 ## Tests
 
 ```bash
@@ -151,11 +186,12 @@ npm test
 ```
 
 Startet für jede Suite einen eigenen Server mit temporärem Datenverzeichnis
-und prüft 116 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
+und prüft 128 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
 bekannten Metadaten), Grundfunktionen (Upload, Moderation, Galerie, ZIP,
 Fehlerfälle), die Upload-Warteschlange inklusive nachgebautem iOS-Verhalten,
-die Abendfunktionen sowie Altfoto-Erkennung und Aufgaben-Editor.
-Vor jedem Deploy einmal laufen lassen.
+die Abendfunktionen, Altfoto-Erkennung und Aufgaben-Editor sowie die
+Übereinstimmung von Datenbank und Dateien (inklusive gleichzeitiger
+Uploads mit derselben clientId). Vor jedem Deploy einmal laufen lassen.
 
 ## Projektstruktur
 
@@ -177,6 +213,7 @@ public/           Frontend, reines HTML/CSS/JS ohne Build-Schritt
 scripts/
   backup-pull.sh  Backup von zuhause holen (WSL/Linux/macOS)
   backup-pull.ps1 dasselbe nativ unter Windows, ohne WSL
+  check-data.cjs  Datenbank gegen die Dateien prüfen und reparieren
   test/           Testsuiten (npm test)
 data/             entsteht zur Laufzeit: app.db + photos/ (nicht im Git)
 ```
@@ -423,10 +460,14 @@ anlegen, gesichertes `data/` nach `/opt/hochzeit/app/data/` kopieren,
 |---|---|
 | `docker compose logs app` zeigt „MOD_KEY fehlt" | `.env` nicht angelegt oder Platzhalter nicht ersetzt |
 | Kein TLS-Zertifikat | DNS zeigt noch nicht auf den Server (`nslookup`), oder Port 80 zu. `docker compose logs caddy` |
+| Weniger Fotos sichtbar als Dateien im data-Ordner | Erstens liegen pro Foto bis zu drei Dateien dort. Zweitens gab es einen Fehler, der Dateien ohne Datenbankeintrag hinterlassen konnte – behoben. Bestand mit `scripts/check-data.cjs` prüfen und reparieren |
+| Moderation zeigt nicht alle Fotos | Behoben. Die Liste war auf 300 begrenzt, die Seite forderte 500 an. Jetzt 2000, und eine Kürzung wird als „⚠️ Nicht angezeigt" gemeldet |
+| Grosses Video kommt nicht an | Die Seite muss offen bleiben, bis der Upload durch ist – ein Banner und eine Rückfrage beim Schliessen weisen jetzt darauf hin. Der Fortschritt steht in der Liste |
 | Video wird nicht hochgeladen | Behoben. Bisher scheiterte der ganze Upload, wenn sich kein Standbild aus dem Video gewinnen liess. Jetzt gibt es einen Platzhalter, das Video geht in jedem Fall hoch |
 | Video zeigt eine schwarze Kachel mit 🎬 | Der Browser konnte kein Standbild gewinnen (oft HEVC vom iPhone in Chrome). Das Video selbst ist vollständig gespeichert |
 | Video lässt sich in der Galerie nicht abspielen | `.mov` mit HEVC spielt Safari, Chrome oft nicht. Die Datei ist in Ordnung – über den Download-Knopf lokal öffnen |
 | `mkstemp ... Operation not permitted` beim Backup | Ziel liegt auf einem Windows-Laufwerk unter WSL. Aktuelles `backup-pull.sh` verwenden oder auf `backup-pull.ps1` wechseln |
+| Backup: `bash: syntax error near unexpected token '('` | Behoben. PowerShell entfernte beim Aufruf nativer Programme die inneren Anführungszeichen, dadurch kam `node -e eval(...)` ohne Quotes auf dem Server an. Das Skript schickt das Snippet jetzt über stdin an `node` |
 | Backup fragt ständig nach der Passphrase | Schlüssel in den ssh-agent legen, siehe oben. Ohne Agent fragt jede Verbindung neu |
 | `scp: Connection closed` mitten im Backup | War die Folge vieler Einzelverbindungen. Das Skript nutzt jetzt eine Verbindung; danach nochmal starten, es holt nur das Fehlende |
 | Upload bricht mit 413 ab | Datei > 512 MB. Limit in `server/index.js` (`upOriginal`) erhöhen – `Caddyfile` (`max_size`) muss **grösser** bleiben als dieser Wert |

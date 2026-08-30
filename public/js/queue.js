@@ -18,7 +18,8 @@
   // 0 Bytes raus. Deshalb die Bytes vor dem Speichern materialisieren.
   // Sehr grosse Dateien (Videos) bleiben nur im Speicher dieser Sitzung,
   // weil ein 300-MB-ArrayBuffer das Handy sonst in die Knie zwingt.
-  var MATERIALIZE_MAX = 60 * 1024 * 1024;
+  var MATERIALIZE_MAX = 200 * 1024 * 1024;
+  var CHUNK = 8 * 1024 * 1024;   // stückweise einlesen, siehe materialize()
   var liveOriginals = {}; // clientId -> File/Blob, nur diese Sitzung
 
   var listeners = [];
@@ -91,15 +92,62 @@
     return put(item).then(function () { notify(item, 'update'); });
   }
 
-  function postForm(url, form) {
-    return fetch(url, { method: 'POST', body: form }).then(function (r) {
-      if (r.ok) return r.json();
-      var permanent = r.status === 413 || r.status === 400 || r.status === 404;
-      var err = new Error('HTTP ' + r.status);
-      err.permanent = permanent;
-      err.status = r.status;
-      throw err;
+  // XMLHttpRequest statt fetch: nur damit gibt es einen Fortschritt beim
+  // Hochladen. Bei einem 100-MB-Video über Mobilfunk ist das der
+  // Unterschied zwischen "hängt" und "läuft noch".
+  function postForm(url, form, onProgress) {
+    return new Promise(function (resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', url, true);
+
+      if (onProgress && xhr.upload) {
+        xhr.upload.onprogress = function (e) {
+          if (e.lengthComputable && e.total) onProgress(e.loaded / e.total);
+        };
+      }
+
+      xhr.onload = function () {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try { resolve(JSON.parse(xhr.responseText || '{}')); }
+          catch (e) { reject(new Error('unlesbare Antwort')); }
+          return;
+        }
+        var err = new Error('HTTP ' + xhr.status);
+        err.status = xhr.status;
+        err.permanent = xhr.status === 413 || xhr.status === 400 || xhr.status === 404;
+        reject(err);
+      };
+      xhr.onerror = function () { reject(new Error('Netzfehler')); };
+      xhr.onabort = function () { reject(new Error('abgebrochen')); };
+      xhr.ontimeout = function () { reject(new Error('Zeitüberschreitung')); };
+
+      xhr.send(form);
     });
+  }
+
+  /* Datei stückweise in den Speicher holen.
+   *
+   * orig.arrayBuffer() über die ganze Datei bräuchte kurzzeitig die
+   * doppelte Dateigrösse (Puffer + Blob) und lässt Handys bei grossen
+   * Videos abstürzen. In 8-MB-Scheiben bleibt der Mehrbedarf klein.
+   */
+  function materialize(file) {
+    var teile = [];
+    var pos = 0;
+    function weiter() {
+      if (pos >= file.size) {
+        return Promise.resolve(new Blob(teile, {
+          type: file.type || 'application/octet-stream',
+        }));
+      }
+      var ende = Math.min(pos + CHUNK, file.size);
+      return file.slice(pos, ende).arrayBuffer().then(function (buf) {
+        teile.push(buf);
+        pos = ende;
+        return weiter();
+      });
+    }
+    return weiter();
   }
 
   function sendMeta(item) {
@@ -148,7 +196,16 @@
 
     var f = new FormData();
     f.append('original', blob, item.filename || 'original');
-    return postForm('/api/original/' + item.serverId, f).then(function () {
+
+    // Nur bei spürbarer Änderung melden, sonst flackert die Anzeige.
+    var zuletzt = -1;
+    return postForm('/api/original/' + item.serverId, f, function (anteil) {
+      var pct = Math.round(anteil * 100);
+      if (pct === zuletzt) return;
+      zuletzt = pct;
+      item.progress = anteil;
+      notify(item, 'progress');
+    }).then(function () {
       item.state = 'done';
       notify(item, 'done');
       return remove(item.clientId);
@@ -191,10 +248,8 @@
         liveOriginals[item.clientId] = orig;
         if (orig.size <= MATERIALIZE_MAX) {
           // Echte Bytes statt Datei-Referenz: übersteht Reload und iOS.
-          prepared = orig.arrayBuffer().then(function (buf) {
-            item.originalBlob = new Blob([buf], {
-              type: orig.type || 'application/octet-stream',
-            });
+          prepared = materialize(orig).then(function (blob) {
+            item.originalBlob = blob;
           }).catch(function () { /* dann eben nur im Speicher */ });
         } else {
           prepared = Promise.resolve();
@@ -210,6 +265,16 @@
     },
     pending: allItems,
     onChange: function (fn) { listeners.push(fn); },
+
+    // Wie viele Uploads sind noch unterwegs? Für die Warnung beim
+    // Schliessen der Seite.
+    offeneAnzahl: function () {
+      return allItems().then(function (items) {
+        return items.filter(function (i) {
+          return i.state === 'new' || i.state === 'meta';
+        }).length;
+      });
+    },
     pump: pump,
 
     // Aufgegebenen Upload von Hand neu anstossen (Antippen in der Liste).

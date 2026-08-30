@@ -16,7 +16,7 @@ const ROOT = path.join(__dirname, '..', '..');
 const BASE_PORT = Number(process.env.TEST_PORT || 3199);
 const KEY = 'test-schluessel';
 
-const SUITES = ['./suite-exif.mjs', './suite-api.mjs', './suite-queue.mjs', './suite-features.mjs', './suite-archive.mjs'];
+const SUITES = ['./suite-exif.mjs', './suite-api.mjs', './suite-queue.mjs', './suite-features.mjs', './suite-archive.mjs', './suite-consistency.mjs'];
 
 async function startServer(port) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fotowand-test-'));
@@ -41,6 +41,7 @@ async function startServer(port) {
   return {
     base,
     logs,
+    dataDir,
     async stop() {
       if (proc.exitCode === null) {
         await new Promise((res) => { proc.once('exit', res); proc.kill(); });
@@ -62,7 +63,7 @@ for (let i = 0; i < SUITES.length; i++) {
   let srv;
   try {
     srv = await startServer(BASE_PORT + i);
-    await mod.default({ base: srv.base, key: KEY, ok });
+    await mod.default({ base: srv.base, key: KEY, ok, dataDir: srv.dataDir });
   } catch (e) {
     broke = e;
     console.error('  \x1b[31mABBRUCH\x1b[0m ' + e.message);

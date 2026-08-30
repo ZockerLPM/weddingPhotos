@@ -16,6 +16,44 @@ export const name = 'Upload-Warteschlange';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const QUEUE_JS = path.join(__dirname, '..', '..', 'public', 'js', 'queue.js');
 
+/* Minimaler XMLHttpRequest auf fetch-Basis.
+ *
+ * queue.js nutzt XHR statt fetch, weil nur XHR einen Fortschritt beim
+ * Hochladen liefert. Fuer den Test genuegt das Noetigste - inklusive
+ * upload.onprogress, damit auch die Fortschrittsmeldung geprueft wird.
+ */
+function makeXHR(base) {
+  return function XHR() {
+    this.upload = {};
+    this.status = 0;
+    this.responseText = '';
+    this.open = (method, url) => {
+      this._method = method;
+      this._url = String(url).startsWith('http') ? url : base + url;
+    };
+    this.send = (body) => {
+      // Groesse ermitteln, um einen Fortschritt melden zu koennen.
+      let total = 0;
+      try {
+        for (const [, v] of body) if (v && v.size) total += v.size;
+      } catch { /* keine FormData */ }
+      if (this.upload.onprogress && total) {
+        this.upload.onprogress({ lengthComputable: true, loaded: 0, total });
+      }
+      fetch(this._url, { method: this._method, body })
+        .then(async (r) => {
+          this.status = r.status;
+          this.responseText = await r.text();
+          if (this.upload.onprogress && total) {
+            this.upload.onprogress({ lengthComputable: true, loaded: total, total });
+          }
+          if (this.onload) this.onload();
+        })
+        .catch(() => { if (this.onerror) this.onerror(); });
+    };
+  };
+}
+
 // Minimales IndexedDB mit strukturiertem Klonen.
 function makeFakeIDB(clone) {
   const store = new Map();
@@ -60,6 +98,7 @@ async function runOne(base, ok, label, clone) {
     indexedDB: makeFakeIDB(clone),
     // Relative URLs wie im Browser gegen den Testserver auflösen.
     fetch: (u, o) => fetch(String(u).startsWith('http') ? u : base + u, o),
+    XMLHttpRequest: makeXHR(base),
     FormData, Blob, setTimeout, clearTimeout,
     setInterval: () => 0,
     console, Date, Math, Promise, JSON, Error, window: {},
@@ -75,8 +114,12 @@ async function runOne(base, ok, label, clone) {
   fileRef.__fileRef = true;
   fileRef.name = 'IMG_9999.JPG';
 
+  const fortschritt = [];
   const finished = new Promise((resolve) => {
-    Q.onChange((item, phase) => { if (phase === 'done') resolve(item); });
+    Q.onChange((item, phase) => {
+      if (phase === 'progress') fortschritt.push(item.progress);
+      if (phase === 'done') resolve(item);
+    });
   });
 
   await Q.enqueue({
@@ -104,6 +147,9 @@ async function runOne(base, ok, label, clone) {
     const len = Number(r.headers.get('content-length'));
     ok(`${label}: Original hat die volle Grösse`, len === 20000, 'sind ' + len + ' Bytes');
   }
+  ok(`${label}: Fortschritt wird gemeldet`,
+    fortschritt.length > 0 && fortschritt[fortschritt.length - 1] === 1,
+    'Meldungen: ' + fortschritt.join(', '));
 }
 
 export default async function run({ base, ok }) {

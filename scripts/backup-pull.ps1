@@ -30,7 +30,11 @@ New-Item -ItemType Directory -Force -Path $photoDir | Out-Null
 
 $useKey = Test-Path $SshKey
 $sshArgs = @()
-if ($useKey) { $sshArgs = @('-i', $SshKey) }
+$keyPart = ''
+if ($useKey) {
+  $sshArgs = @('-i', $SshKey)
+  $keyPart = "-i `"$SshKey`""
+}
 
 function Invoke-Remote([string]$Command) {
   & ssh @sshArgs -o BatchMode=no $Server $Command
@@ -69,15 +73,27 @@ db.exec("VACUUM INTO '/data/app-snapshot.db'");
 db.close();
 console.log('ok');
 '@
-$b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($snippet))
+
+# Das Skript geht ueber stdin an das entfernte node - node liest ein Programm
+# von der Standardeingabe, wenn kein Dateiname angegeben ist.
+#
+# Wichtig: NICHT ueber "node -e ..." mit Anfuehrungszeichen im Kommando.
+# PowerShell entfernt beim Aufruf nativer Programme die inneren Quotes,
+# dadurch kaeme auf dem Server "node -e eval(...)" ohne Anfuehrungszeichen an
+# und die entfernte bash scheitert an der Klammer. Der Umweg ueber stdin
+# kommt ganz ohne verschachtelte Quotes aus.
+$snipFile = Join-Path $env:TEMP 'fotowand-snapshot.js'
+[IO.File]::WriteAllText($snipFile, $snippet, (New-Object Text.UTF8Encoding($false)))
 
 Write-Host '-> Datenbank-Schnappschuss auf dem Server ...'
-$snapCmd = "cd '$RemoteDir' && docker compose exec -T app node -e " +
-           "`"eval(Buffer.from('$b64','base64').toString())`""
-Invoke-Remote $snapCmd | Out-Null
+$remoteNode = "cd '$RemoteDir' && docker compose exec -T app node"
+cmd /c "ssh $keyPart $Server `"$remoteNode`" < `"$snipFile`""
 $snapshotOk = ($LASTEXITCODE -eq 0)
+Remove-Item $snipFile -Force -ErrorAction SilentlyContinue
+
 if (-not $snapshotOk) {
   Write-Warning 'Schnappschuss nicht moeglich - es wird die Live-Datenbank kopiert.'
+  Write-Host '   (Fuer eine saubere Kopie den Server kurz stoppen: docker compose stop app)'
 }
 
 # --- 2. Fehlende Dateien bestimmen ------------------------------------------
@@ -105,7 +121,6 @@ function Copy-ViaTar([string[]]$Names) {
   $text = ($Names -join "`n") + "`n"
   [IO.File]::WriteAllText($listFile, $text, (New-Object Text.UTF8Encoding($false)))
 
-  $keyPart = if ($useKey) { "-i `"$SshKey`"" } else { '' }
   $remoteCmd = "tar -cf - -C '$RemoteDir/data/photos' -T -"
   $line = "ssh $keyPart $Server `"$remoteCmd`" < `"$listFile`" | " +
           "`"$tarExe`" -xf - -C `"$photoDir`""
