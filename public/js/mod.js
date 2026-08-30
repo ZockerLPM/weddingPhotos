@@ -159,15 +159,20 @@
     });
     tile.appendChild(stern);
 
-    if (p.category) {
-      var k = kategorieVon(p.category);
-      if (k) {
-        var kat = document.createElement('span');
-        kat.className = 'kat';
-        kat.textContent = k.icon;
-        kat.title = k.name;
-        tile.appendChild(kat);
-      }
+    // Art und Kategorie in EINEM Feld unten rechts – zwei getrennte
+    // Marken lagen auf einer 110-Pixel-Kachel übereinander.
+    var k = kategorieVon(p.category);
+    var marken = [];
+    if (p.kind === 'video') marken.push('🎬');
+    if (p.kind === 'message') marken.push('🎙️');
+    if (k) marken.push(k.icon);
+    if (marken.length) {
+      var kat = document.createElement('span');
+      kat.className = 'kat';
+      kat.textContent = marken.join(' ');
+      kat.title = [p.kind === 'photo' ? null : p.kind, k ? k.name : null]
+        .filter(Boolean).join(' · ');
+      tile.appendChild(kat);
     }
 
     if (auswahlModus) {
@@ -531,6 +536,7 @@
     var n = auswahlIds().length;
     elAuswahlZahl.textContent = n === 1 ? '1 ausgewählt' : n + ' ausgewählt';
     elLeiste.classList.toggle('hidden', !auswahlModus);
+    document.body.classList.toggle('auswahl-offen', auswahlModus);
   }
 
   function auswahlBeenden() {

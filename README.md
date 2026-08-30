@@ -31,6 +31,19 @@ alles als ZIP.
 Nebeneffekt: Weil das Anzeigebild im Browser entsteht, kommt beim Server
 immer JPEG an – **HEIC/Bildformate sind serverseitig kein Thema**.
 
+**Grosse Originale gehen in 8-MB-Stücken hoch.** Ein 400-MB-Video in einer
+einzigen Anfrage scheitert zuverlässig – besonders auf dem iPhone: Multer
+und Caddy haben Grenzen, das Gerät muss die Datei am Stück halten, und ein
+Abbruch bei 90 % wirft alles weg. Stückweise sieht keine Schicht je mehr
+als 8 MB, der Speicherbedarf bleibt klein, und ein Abbruch kostet höchstens
+ein Stück. Unterhalb von 8 MB bleibt es bei einer einzelnen Anfrage – das
+ist schneller und völlig unproblematisch.
+
+Damit ist die Dateigrösse praktisch keine Grenze mehr. Was bleibt: Die Seite
+muss offen bleiben, bis der Upload durch ist (Banner und Rückfrage weisen
+darauf hin), denn bei sehr grossen Dateien liegt das Original nur im
+Speicher dieser Sitzung.
+
 **Live-Updates** laufen über Server-Sent Events (`/api/stream`). Jedes Event
 hat eine fortlaufende ID; nach einem Verbindungsabbruch liefert der Server
 alles Verpasste automatisch nach. Die Fotowand läuft bei Netzausfall aus
@@ -173,6 +186,13 @@ Die Galerie ist fürs Handy gebaut, nicht nur dafür angepasst:
 - **Filterleiste** oben, waagrecht scrollbar, klebt beim Scrollen: Alle ·
   ★ Favoriten · je Kategorie mit Anzahl · Ohne Kategorie. Dazu ein
   Personenfilter.
+- **„Alle" ist nach Kategorie geordnet** – Lieblingsbilder zuerst, dann
+  Trauung, Essen, Torte … in der Reihenfolge, die in der Moderation
+  festgelegt ist, danach „Weitere Aufnahmen" und „📼 Mitgebracht von
+  früher". Das entspricht dem Ablauf des Tages und ist die Ordnung, in der
+  man ein Fotoalbum durchblättert. Innerhalb einer Kategorie geht es
+  chronologisch weiter. Ist ein Kategorie-Filter aktiv, wird stattdessen
+  nach Tagen gruppiert – eine zweite Ebene wäre dort sinnlos.
 - **Raster** mit drei Spalten und minimalen Abständen – auf dem Handy zählt
   jeder Pixel; ab 620 px Breite wird automatisch umgestellt.
 - **Aktionsleiste unten**, weil dort der Daumen ist. Sie klebt am unteren
@@ -354,15 +374,15 @@ npm test
 ```
 
 Startet für jede Suite einen eigenen Server mit temporärem Datenverzeichnis
-und prüft 219 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
+und prüft 232 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
 bekannten Metadaten), Grundfunktionen (Upload, Moderation, Galerie, ZIP,
 Fehlerfälle), die Upload-Warteschlange inklusive nachgebautem iOS-Verhalten,
 die Abendfunktionen, Altfoto-Erkennung und Aufgaben-Editor sowie die
 Übereinstimmung von Datenbank und Dateien, die gesamte Nachbereitung –
 Serien, Duplikate, Favoriten, Paketbau, fortsetzbare Downloads und
 endgültiges Löschen –, das stückweise Nachreichen grosser Originale sowie
-Kategorien, Auswahl-Downloads und die Sichtungs-Seite.
-Vor jedem Deploy einmal laufen lassen.
+Kategorien, Auswahl-Downloads, die Sichtungs-Seite und den stückweisen
+Upload grosser Videos. Vor jedem Deploy einmal laufen lassen.
 
 ## Projektstruktur
 
@@ -639,7 +659,7 @@ anlegen, gesichertes `data/` nach `/opt/hochzeit/app/data/` kopieren,
 | Grosses Video kommt nicht an | Die Seite muss offen bleiben, bis der Upload durch ist – ein Banner und eine Rückfrage beim Schliessen weisen jetzt darauf hin. Der Fortschritt steht in der Liste |
 | Video wird nicht hochgeladen | Behoben. Bisher scheiterte der ganze Upload, wenn sich kein Standbild aus dem Video gewinnen liess. Jetzt gibt es einen Platzhalter, das Video geht in jedem Fall hoch |
 | Video zeigt eine schwarze Kachel mit 🎬 | Der Browser konnte kein Standbild gewinnen (oft HEVC vom iPhone in Chrome). Das Video selbst ist vollständig gespeichert |
-| Video kam nur als Vorschaubild an | War zu gross fürs Hochladen. In der Moderation unter **🧹 Nach der Feier → 🎬 Originale nachreichen** die Datei auswählen – sie geht in Stücken hoch, die Grösse spielt keine Rolle |
+| Video kam nur als Vorschaubild an | Behoben: Originale gehen jetzt auch beim Gäste-Upload in 8-MB-Stücken hoch. Altbestand über **🧹 Nach der Feier → 🎬 Originale nachreichen** ergänzen |
 | Video lässt sich in der Galerie nicht abspielen | `.mov` mit HEVC spielt Safari, Chrome oft nicht. Die Datei ist in Ordnung – über den Download-Knopf lokal öffnen |
 | `mkstemp ... Operation not permitted` beim Backup | Ziel liegt auf einem Windows-Laufwerk unter WSL. Aktuelles `backup-pull.sh` verwenden oder auf `backup-pull.ps1` wechseln |
 | Backup: `bash: syntax error near unexpected token '('` | Behoben. PowerShell entfernte beim Aufruf nativer Programme die inneren Anführungszeichen, dadurch kam `node -e eval(...)` ohne Quotes auf dem Server an. Das Skript schickt das Snippet jetzt über stdin an `node` |

@@ -19,7 +19,11 @@
   // Sehr grosse Dateien (Videos) bleiben nur im Speicher dieser Sitzung,
   // weil ein 300-MB-ArrayBuffer das Handy sonst in die Knie zwingt.
   var MATERIALIZE_MAX = 200 * 1024 * 1024;
-  var CHUNK = 8 * 1024 * 1024;   // stückweise einlesen, siehe materialize()
+  var CHUNK = 8 * 1024 * 1024;   // Stückgrösse fürs Einlesen und Hochladen
+
+  // Ab dieser Grösse wird das Original in Stücken hochgeladen. Darunter ist
+  // eine einzelne Anfrage schneller und völlig unproblematisch.
+  var STUECKWEISE_AB = 8 * 1024 * 1024;
   var liveOriginals = {}; // clientId -> File/Blob, nur diese Sitzung
 
   var listeners = [];
@@ -125,6 +129,63 @@
     });
   }
 
+  function postJSON(url, koerper) {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(koerper || {}),
+    }).then(function (r) {
+      if (r.ok) return r.json();
+      var err = new Error('HTTP ' + r.status);
+      err.status = r.status;
+      err.permanent = r.status === 400 || r.status === 404;
+      throw err;
+    });
+  }
+
+  /* Original in Stücken hochladen.
+   *
+   * Der Grund: Ein grosses Video in einer einzigen Anfrage scheitert
+   * zuverlässig – besonders auf dem iPhone. Multer und Caddy haben Grenzen,
+   * das Gerät muss die Datei am Stück halten, und ein Abbruch bei 90 %
+   * wirft alles weg. In 8-MB-Stücken sieht keine Schicht je mehr als ein
+   * Stück, und ein Abbruch kostet höchstens dieses eine.
+   */
+  function sendeStueckweise(item, blob, melde) {
+    var basis = '/api/original/' + item.serverId;
+    return postJSON(basis + '/start', { dateiname: item.filename || 'original' })
+      .then(function (start) {
+        // Server meldet: liegt schon vor (etwa nach einem Wiederholversuch).
+        if (start.existed) return { ok: true };
+        if (!start.marke) throw new Error('kein Start');
+
+        var pos = 0;
+        function weiter() {
+          if (pos >= blob.size) {
+            return postJSON(basis + '/fertig', { marke: start.marke });
+          }
+          var ende = Math.min(pos + CHUNK, blob.size);
+          return fetch(basis + '/teil?marke=' + encodeURIComponent(start.marke), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: blob.slice(pos, ende),
+          }).then(function (r) {
+            if (!r.ok) {
+              var err = new Error('HTTP ' + r.status);
+              err.status = r.status;
+              // 410 heisst: Marke abgelaufen – ein neuer Anlauf hilft.
+              err.permanent = r.status === 400 || r.status === 404;
+              throw err;
+            }
+            pos = ende;
+            if (melde) melde(pos / blob.size);
+            return weiter();
+          });
+        }
+        return weiter();
+      });
+  }
+
   /* Datei stückweise in den Speicher holen.
    *
    * orig.arrayBuffer() über die ganze Datei bräuchte kurzzeitig die
@@ -194,18 +255,26 @@
       return remove(item.clientId);
     }
 
-    var f = new FormData();
-    f.append('original', blob, item.filename || 'original');
-
     // Nur bei spürbarer Änderung melden, sonst flackert die Anzeige.
     var zuletzt = -1;
-    return postForm('/api/original/' + item.serverId, f, function (anteil) {
+    var melde = function (anteil) {
       var pct = Math.round(anteil * 100);
       if (pct === zuletzt) return;
       zuletzt = pct;
       item.progress = anteil;
       notify(item, 'progress');
-    }).then(function () {
+    };
+
+    var uebertragung;
+    if (blob.size > STUECKWEISE_AB) {
+      uebertragung = sendeStueckweise(item, blob, melde);
+    } else {
+      var f = new FormData();
+      f.append('original', blob, item.filename || 'original');
+      uebertragung = postForm('/api/original/' + item.serverId, f, melde);
+    }
+
+    return uebertragung.then(function () {
       item.state = 'done';
       notify(item, 'done');
       return remove(item.clientId);

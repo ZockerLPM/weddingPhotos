@@ -155,4 +155,70 @@ async function runOne(base, ok, label, clone) {
 export default async function run({ base, ok }) {
   await runOne(base, ok, 'iOS', wieIOS);
   await runOne(base, ok, 'Chrome', wieChrome);
+  await stueckweise({ base, ok });
+}
+
+/* Grosse Originale gehen stueckweise hoch.
+ *
+ * Das ist der Weg, der einen 400-MB-Videoclip vom iPhone ueberhaupt erst
+ * moeglich macht: Keine Schicht sieht je mehr als ein Stueck.
+ */
+export async function stueckweise({ base, ok }) {
+  const sandbox = {
+    indexedDB: makeFakeIDB(wieChrome),
+    fetch: (u, o) => fetch(String(u).startsWith('http') ? u : base + u, o),
+    XMLHttpRequest: makeXHR(base),
+    FormData, Blob, setTimeout, clearTimeout,
+    setInterval: () => 0,
+    console, Date, Math, Promise, JSON, Error, window: {},
+  };
+  sandbox.window = sandbox;
+  sandbox.window.addEventListener = () => {};
+  vm.createContext(sandbox);
+  vm.runInContext(fs.readFileSync(QUEUE_JS, 'utf8'), sandbox);
+  const Q = sandbox.window.UploadQueue;
+
+  // 20 MB -> drei Stuecke a 8 MB. Inhalt gemustert, damit ein
+  // Zusammensetzen in falscher Reihenfolge auffiele.
+  const gross = Buffer.alloc(20 * 1024 * 1024);
+  for (let i = 0; i < gross.length; i += 512) gross[i] = (i / 512) % 251;
+
+  const klein = Buffer.alloc(3000, 0x42);
+  const fortschritt = [];
+  const fertig = new Promise((resolve) => {
+    Q.onChange((item, phase) => {
+      if (phase === 'progress') fortschritt.push(item.progress);
+      if (phase === 'done') resolve(item);
+    });
+  });
+
+  await Q.enqueue({
+    clientId: 'stueck-' + Date.now(),
+    uploader: 'GrossVideo',
+    deviceId: 'dev', kind: 'video', caption: '', challengeId: null,
+    takenAt: Date.now(), filename: 'IMG_GROSS.MOV', w: 1600, h: 900,
+    displayBlob: new Blob([klein], { type: 'image/jpeg' }),
+    thumbBlob: new Blob([klein], { type: 'image/jpeg' }),
+    originalBlob: new Blob([gross], { type: 'video/quicktime' }),
+  });
+
+  const item = await Promise.race([fertig, wait(30000).then(() => null)]);
+  ok('Grosses Original wird abgeschlossen', !!item);
+  if (!item) return;
+
+  const feed = await (await fetch(base + '/api/feed')).json();
+  const photo = feed.photos.find((p) => p.id === item.serverId);
+  ok('Grosses Video liegt auf dem Server', photo?.hasOriginal === true,
+    'originalLost=' + !!item.originalLost);
+  ok('Die Endung stammt aus dem Dateinamen', photo?.ext === 'mov');
+
+  const datei = await fetch(`${base}/i/${photo.id}-o.mov`);
+  const inhalt = Buffer.from(await datei.arrayBuffer());
+  ok('Die Stücke ergeben wieder die Originaldatei',
+    inhalt.length === gross.length && inhalt.equals(gross),
+    inhalt.length + ' statt ' + gross.length);
+
+  ok('Fortschritt wird über die Stücke gemeldet',
+    fortschritt.length >= 3 && fortschritt[fortschritt.length - 1] === 1,
+    fortschritt.map((x) => Math.round(x * 100) + '%').join(' '));
 }

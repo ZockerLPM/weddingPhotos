@@ -179,21 +179,29 @@ input[type="text"]:focus {
 }
 
 /* Leiste für die Mehrfachauswahl – bleibt am unteren Rand in Daumennähe */
+/* Fest am unteren Rand, wie in der Galerie. Als klebendes Element im
+   Textfluss sass sie bei kurzen Listen mitten auf der Seite. */
 .auswahlleiste {
-  position: sticky;
+  position: fixed;
+  left: 0;
+  right: 0;
   bottom: 0;
-  z-index: 30;
+  z-index: 40;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  background: var(--card);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius);
-  padding: 10px 12px;
-  margin: 10px 0;
+  justify-content: center;
+  background: rgba(20, 22, 26, .97);
+  border-top: 1px solid var(--accent);
+  padding: 10px 14px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
   box-shadow: 0 -4px 20px rgba(0, 0, 0, .5);
+  backdrop-filter: blur(8px);
 }
+
+/* Platz schaffen, solange die Leiste sichtbar ist. */
+body.auswahl-offen { padding-bottom: 120px; }
 
 .auswahlleiste span { color: var(--accent); font-weight: 600; }
 .auswahlleiste select {
@@ -1060,6 +1068,13 @@ kbd {
   background: var(--card2);
   color: var(--text);
   margin-right: 3px;
+}
+
+/* Unter 380 px passen die vollen Beschriftungen nicht mehr nebeneinander –
+   dann bleiben Symbol und Tastenkürzel, das genügt zum Bedienen. */
+@media (max-width: 379px) {
+  .si-knoepfe .wort { display: none; }
+  .si-knoepfe .btn { padding: 12px 10px; }
 }
 
 @media (min-width: 760px) {

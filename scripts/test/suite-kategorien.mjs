@@ -175,4 +175,76 @@ export default async function run({ base, key, ok }) {
   const html = await seite.text();
   ok('Galerie-Seite lädt mit Filterleiste und Aktionsleiste',
     seite.status === 200 && html.includes('chipsleiste') && html.includes('aktionen'));
+
+  await gaesteStueckweise({ base, ok });
+}
+
+/* Der Gaeste-Weg fuer grosse Originale und seine Grenzen. */
+export async function gaesteStueckweise({ base, ok }) {
+  const p = await uploadPhoto(base, { who: 'Handyfilmer', kind: 'video' });
+  await wait(150);
+
+  const start = await (await fetch(`${base}/api/original/${p.body.id}/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dateiname: 'IMG_0042.MOV' }),
+  })).json();
+  ok('Gäste können ohne Schlüssel stückweise hochladen',
+    !!start.marke && start.ext === 'mov', JSON.stringify(start));
+
+  const daten = Buffer.alloc(9000, 0x33);
+  const teil = await fetch(
+    `${base}/api/original/${p.body.id}/teil?marke=${encodeURIComponent(start.marke)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: daten,
+    });
+  ok('Ein Stück wird angenommen', teil.status === 200);
+
+  // Eine fremde Marke darf nicht auf einen anderen Beitrag angewendet werden.
+  const anderer = await uploadPhoto(base, { who: 'Handyfilmer' });
+  const fremd = await fetch(
+    `${base}/api/original/${anderer.body.id}/teil?marke=${encodeURIComponent(start.marke)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: Buffer.alloc(16),
+    });
+  ok('Marke eines anderen Beitrags wird abgewiesen', fremd.status === 400,
+    'Status ' + fremd.status);
+
+  const fertig = await (await fetch(`${base}/api/original/${p.body.id}/fertig`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ marke: start.marke }),
+  })).json();
+  ok('Abschluss meldet die Grösse', fertig.bytes === daten.length,
+    fertig.bytes + ' statt ' + daten.length);
+
+  await wait(150);
+  const feed = await (await fetch(base + '/api/feed')).json();
+  ok('Das Original ist verknüpft',
+    feed.photos.find((x) => x.id === p.body.id)?.hasOriginal === true);
+
+  // Ein vorhandenes Original darf der Gäste-Weg NICHT überschreiben.
+  const nochmal = await (await fetch(`${base}/api/original/${p.body.id}/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dateiname: 'ANDERS.MP4' }),
+  })).json();
+  ok('Vorhandenes Original wird nicht überschrieben', nochmal.existed === true,
+    JSON.stringify(nochmal));
+
+  ok('Leeres Stück wird abgewiesen',
+    (await fetch(`${base}/api/original/${p.body.id}/teil?marke=x`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: Buffer.alloc(0),
+    })).status === 400);
+
+  ok('Unbekannter Beitrag wird abgewiesen',
+    (await fetch(`${base}/api/original/01ZZZZZZZZZZZZZZZZZZZZZZZZ/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dateiname: 'x.mp4' }),
+    })).status === 404);
 }

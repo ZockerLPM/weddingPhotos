@@ -195,42 +195,75 @@
     elGrid.appendChild(tile);
   }
 
+  var nachZeit = function (a, b) {
+    return (a.effectiveAt || a.uploadedAt) - (b.effectiveAt || b.uploadedAt);
+  };
+
+  /* Aufbau der Ansicht.
+   *
+   * Ohne Filter wird nach KATEGORIE gruppiert – „Trauung", „Essen", … in
+   * der Reihenfolge, die in der Moderation festgelegt ist. Das entspricht
+   * dem Ablauf des Tages und ist die Ordnung, in der man ein Fotoalbum
+   * durchblättert. Innerhalb einer Kategorie geht es chronologisch weiter.
+   *
+   * Ist ein Kategorie-Filter aktiv, wäre eine zweite Ebene sinnlos – dann
+   * wird nach Tagen gruppiert wie zuvor.
+   */
   function render() {
     var pick = auswaehlen();
-
-    var favoriten = filterKat ? [] : pick.filter(function (p) { return p.favorite; });
-    var rest = filterKat ? pick : pick.filter(function (p) { return !p.favorite; });
-
-    var abend = rest.filter(function (p) { return !p.archive; })
-      .sort(function (a, b) {
-        return (a.effectiveAt || a.uploadedAt) - (b.effectiveAt || b.uploadedAt);
-      });
-    var frueher = rest.filter(function (p) { return p.archive; })
-      .sort(function (a, b) {
-        return (a.takenAt || a.uploadedAt) - (b.takenAt || b.uploadedAt);
-      });
-
-    gefiltert = favoriten.concat(abend, frueher);
+    var i = 0;
 
     elGrid.textContent = '';
     elGrid.classList.toggle('waehlen', auswahlModus);
-    var i = 0;
 
-    if (favoriten.length) {
-      ueberschrift('★ Unsere Lieblingsbilder', 'favhead');
-      favoriten.forEach(function (p) { kachel(p, i++); });
-    }
+    var abschnitt = function (titel, klasse, gruppe) {
+      if (!gruppe.length) return;
+      ueberschrift(titel, klasse);
+      gruppe.forEach(function (p) { kachel(p, i++); });
+    };
 
-    var letzterTag = '';
-    abend.forEach(function (p) {
-      var tag = fmtDay(p.effectiveAt || p.uploadedAt);
-      if (tag !== letzterTag) { letzterTag = tag; ueberschrift(tag); }
-      kachel(p, i++);
-    });
+    if (filterKat) {
+      // Gefilterte Ansicht: flach und chronologisch, mit Tages-Überschriften.
+      var flach = pick.slice().sort(nachZeit);
+      gefiltert = flach;
+      var letzterTag = '';
+      flach.forEach(function (p) {
+        var tag = fmtDay(p.effectiveAt || p.uploadedAt);
+        if (tag !== letzterTag) { letzterTag = tag; ueberschrift(tag); }
+        kachel(p, i++);
+      });
+    } else {
+      var favoriten = pick.filter(function (p) { return p.favorite; }).sort(nachZeit);
+      var rest = pick.filter(function (p) { return !p.favorite; });
 
-    if (frueher.length) {
-      ueberschrift('📼 Mitgebracht von früher');
-      frueher.forEach(function (p) { kachel(p, i++); });
+      var frueher = rest.filter(function (p) { return p.archive; })
+        .sort(function (a, b) {
+          return (a.takenAt || a.uploadedAt) - (b.takenAt || b.uploadedAt);
+        });
+      var abend = rest.filter(function (p) { return !p.archive; });
+
+      // Nach Kategorie gruppieren, Reihenfolge wie in der Moderation.
+      var gruppen = [];
+      var vergeben = {};
+      kategorien.forEach(function (k) {
+        var drin = abend.filter(function (p) { return p.category === k.id; })
+          .sort(nachZeit);
+        if (!drin.length) return;
+        drin.forEach(function (p) { vergeben[p.id] = true; });
+        gruppen.push({ titel: k.icon + ' ' + k.name, fotos: drin });
+      });
+
+      var ohne = abend.filter(function (p) { return !vergeben[p.id]; }).sort(nachZeit);
+
+      gefiltert = favoriten.concat(
+        gruppen.reduce(function (a, g) { return a.concat(g.fotos); }, []),
+        ohne, frueher);
+
+      abschnitt('★ Unsere Lieblingsbilder', 'favhead', favoriten);
+      gruppen.forEach(function (g) { abschnitt(g.titel, null, g.fotos); });
+      abschnitt(kategorien.length ? '📷 Weitere Aufnahmen' : 'Alle Aufnahmen',
+        null, ohne);
+      abschnitt('📼 Mitgebracht von früher', null, frueher);
     }
 
     elZaehler.textContent = gefiltert.length +

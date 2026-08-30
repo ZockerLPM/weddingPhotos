@@ -5,8 +5,11 @@
   var MAX_DISPLAY = 1600;   // lange Kante Anzeigebild
   var MAX_THUMB = 400;
   var JPEG_Q = 0.82;
-  var MAX_PHOTO_ORIG = 50 * 1024 * 1024;
-  var MAX_VIDEO_ORIG = 300 * 1024 * 1024;
+  var MAX_PHOTO_ORIG = 100 * 1024 * 1024;
+  // Seit das Original in Stücken hochgeladen wird, ist die Übertragung
+  // keine Grenze mehr. Der Wert dient nur noch als Notbremse gegen
+  // versehentlich gewählte Riesendateien.
+  var MAX_VIDEO_ORIG = 4 * 1024 * 1024 * 1024;
   var VIDEO_FRAME_MS = 25000;   // Standbild: Handys brauchen deutlich länger
 
   var elName = document.getElementById('name');
@@ -138,7 +141,7 @@
       case 'done':
         if (item.posterFallback) return '✓ Video gespeichert (ohne Vorschaubild)';
         if (item.serverArchive) return '📼 als Foto von früher gespeichert';
-        if (item.skipOriginal) return '✓ geteilt (Datei zu gross fürs Original)';
+        if (item.skipOriginal) return '✓ geteilt (Datei zu gross – nur Vorschau)';
         if (item.originalLost) return '✓ geteilt (Original nicht mehr verfügbar)';
         return '✓✓ komplett gesichert';
       case 'failed': return '⚠️ ' + (item.error || 'fehlgeschlagen');

@@ -505,26 +505,124 @@ app.post('/api/mod/category', modAuth, (req, res) => {
   res.json({ ok: true, geaendert: n });
 });
 
-/* Grosse Originale nachreichen.
+/* Originale stückweise hochladen.
  *
- * Videos über dem Upload-Limit kamen am Fest nur als Vorschaubild an. Sie
- * lassen sich hinterher nachreichen – in Stücken, damit die Dateigrösse
- * keine Rolle mehr spielt: Jedes Stück ist eine eigene, kleine Anfrage,
- * die weder an Multer noch an Caddy scheitert. Nebenbei überlebt das
- * einen Verbindungsabbruch besser als ein Ein-Stück-Upload von 2 GB.
+ * Ein grosses Video in einer einzigen Anfrage scheitert zuverlässig: Multer
+ * und Caddy haben Grenzen, das Handy muss die Datei am Stück halten, und ein
+ * Verbindungsabbruch bei 90 % wirft alles weg. In 8-MB-Stücken sieht keine
+ * Schicht je mehr als ein Stück, der Speicherbedarf bleibt klein und ein
+ * Abbruch kostet höchstens ein Stück.
+ *
+ * Dieselbe Maschinerie bedient zwei Wege: die Gäste beim Hochladen und die
+ * Moderation beim Nachreichen.
  */
-const nachUploads = new Map();
-const NACH_TTL = 3 * 3600 * 1000;
+const teilLaeufe = new Map();
+const TEIL_TTL = 3 * 3600 * 1000;
 
 setInterval(() => {
   const jetzt = Date.now();
-  for (const [marke, u] of nachUploads) {
-    if (jetzt - u.zeit > NACH_TTL) {
+  for (const [marke, u] of teilLaeufe) {
+    if (jetzt - u.zeit > TEIL_TTL) {
       fsp.unlink(u.pfad).catch(() => {});
-      nachUploads.delete(marke);
+      teilLaeufe.delete(marke);
     }
   }
 }, 30 * 60 * 1000).unref();
+
+async function teilStart(p, dateiname) {
+  const ext = sanitizeExt(dateiname) || (p.kind === 'photo' ? 'jpg' : 'mp4');
+  const marke = crypto.randomUUID();
+  const pfad = path.join(db.dirs.tmp, 'teil-' + marke);
+  await fsp.writeFile(pfad, Buffer.alloc(0));
+  teilLaeufe.set(marke, { id: p.id, ext, pfad, bytes: 0, zeit: Date.now() });
+  return { marke, ext };
+}
+
+async function teilAnhaengen(marke, stueck) {
+  const u = teilLaeufe.get(marke);
+  if (!u) return null;
+  await fsp.appendFile(u.pfad, stueck);
+  u.bytes += stueck.length;
+  u.zeit = Date.now();
+  return u;
+}
+
+// Zusammensetzen und am Eintrag vermerken. Gibt den fertigen Datensatz
+// zurück oder wirft mit einer sprechenden Ursache.
+async function teilFertig(marke) {
+  const u = teilLaeufe.get(marke);
+  if (!u) return { fehler: 410 };
+
+  const p = db.byId(u.id);
+  const aufraeumen = async () => {
+    await fsp.unlink(u.pfad).catch(() => {});
+    teilLaeufe.delete(marke);
+  };
+  if (!p) { await aufraeumen(); return { fehler: 404 }; }
+  if (!u.bytes) { await aufraeumen(); return { fehler: 400 }; }
+
+  // Ein vorhandenes Original mit anderer Endung würde sonst als Leiche
+  // liegen bleiben.
+  if (p.has_original && p.ext_original && p.ext_original !== u.ext) {
+    await fsp.unlink(
+      path.join(db.dirs.photos, `${p.id}-o.${p.ext_original}`)).catch(() => {});
+  }
+
+  const ziel = path.join(db.dirs.photos, `${p.id}-o.${u.ext}`);
+  await fsp.rename(u.pfad, ziel);
+  try {
+    db.markOriginal(p.id, u.ext, '');
+  } catch (e) {
+    await fsp.unlink(ziel).catch(() => {});
+    teilLaeufe.delete(marke);
+    throw e;
+  }
+  const bytes = u.bytes;
+  teilLaeufe.delete(marke);
+
+  const photo = rowToPublic(db.byId(p.id));
+  sse.emit('update', photo);
+  return { photo, bytes };
+}
+
+// Rohdaten der Stücke: eigener Parser, weil hier kein JSON kommt.
+const teilRoh = express.raw({ type: '*/*', limit: '32mb' });
+
+/* ---- Weg für die Gäste ----
+ * Ohne Schlüssel, wie der einstufige Upload daneben – wer die Adresse der
+ * Seite kennt, darf beitragen. Ein vorhandenes Original wird hier aber
+ * nicht überschrieben.
+ */
+app.post('/api/original/:id/start', async (req, res) => {
+  const p = db.byId(str(req.params.id, 26));
+  if (!p) return res.status(404).json({ error: 'unbekannt' });
+  if (p.has_original) return res.json({ existed: true });
+  res.json(await teilStart(p, str(req.body.dateiname, 200)));
+});
+
+app.post('/api/original/:id/teil', teilRoh, async (req, res) => {
+  if (!req.body || !req.body.length) {
+    return res.status(400).json({ error: 'leeres Stueck' });
+  }
+  const marke = str(req.query.marke, 64);
+  const lauf = teilLaeufe.get(marke);
+  if (!lauf) return res.status(410).json({ error: 'Upload abgelaufen' });
+
+  // Zugehörigkeit prüfen, BEVOR etwas angehängt wird – sonst landen die
+  // Daten in der Datei und werden erst danach abgelehnt.
+  if (lauf.id !== str(req.params.id, 26)) {
+    return res.status(400).json({ error: 'Marke gehoert zu einem anderen Beitrag' });
+  }
+
+  const u = await teilAnhaengen(marke, req.body);
+  res.json({ bytes: u.bytes });
+});
+
+app.post('/api/original/:id/fertig', async (req, res) => {
+  const r = await teilFertig(str(req.body.marke, 64));
+  if (r.fehler) return res.status(r.fehler).json({ error: 'nicht abschliessbar' });
+  res.json({ ok: true, bytes: r.bytes });
+});
 
 /* Eine Sichtungs-Aktion in einem Zug.
  *
@@ -564,72 +662,30 @@ app.get('/api/mod/fehlende-originale', modAuth, (req, res) => {
   res.json({ eintraege: db.ohneOriginal().map(rowToPublic) });
 });
 
+/* ---- Weg für die Moderation ----
+ * Darf im Gegensatz zum Gäste-Weg ein vorhandenes Original ersetzen.
+ */
 app.post('/api/mod/nachreichen/start', modAuth, async (req, res) => {
-  const id = str(req.body.id, 26);
-  const p = db.byId(id);
+  const p = db.byId(str(req.body.id, 26));
   if (!p) return res.status(404).json({ error: 'unbekannt' });
-
-  const ext = sanitizeExt(str(req.body.dateiname, 200))
-    || (p.kind === 'photo' ? 'jpg' : 'mp4');
-  const marke = crypto.randomUUID();
-  const pfad = path.join(db.dirs.tmp, 'nach-' + marke);
-  await fsp.writeFile(pfad, Buffer.alloc(0));
-
-  nachUploads.set(marke, { id, ext, pfad, bytes: 0, zeit: Date.now() });
-  res.json({ marke, ext });
+  res.json(await teilStart(p, str(req.body.dateiname, 200)));
 });
 
-app.post('/api/mod/nachreichen/teil', modAuth,
-  express.raw({ type: '*/*', limit: '32mb' }),
-  async (req, res) => {
-    const u = nachUploads.get(str(req.query.marke, 64));
-    if (!u) return res.status(410).json({ error: 'Upload abgelaufen' });
-    if (!req.body || !req.body.length) {
-      return res.status(400).json({ error: 'leeres Stueck' });
-    }
-    await fsp.appendFile(u.pfad, req.body);
-    u.bytes += req.body.length;
-    u.zeit = Date.now();
-    res.json({ bytes: u.bytes });
-  });
+app.post('/api/mod/nachreichen/teil', modAuth, teilRoh, async (req, res) => {
+  if (!req.body || !req.body.length) {
+    return res.status(400).json({ error: 'leeres Stueck' });
+  }
+  const u = await teilAnhaengen(str(req.query.marke, 64), req.body);
+  if (!u) return res.status(410).json({ error: 'Upload abgelaufen' });
+  res.json({ bytes: u.bytes });
+});
 
 app.post('/api/mod/nachreichen/fertig', modAuth, async (req, res) => {
-  const marke = str(req.body.marke, 64);
-  const u = nachUploads.get(marke);
-  if (!u) return res.status(410).json({ error: 'Upload abgelaufen' });
-
-  const p = db.byId(u.id);
-  if (!p) {
-    await fsp.unlink(u.pfad).catch(() => {});
-    nachUploads.delete(marke);
-    return res.status(404).json({ error: 'unbekannt' });
-  }
-  if (!u.bytes) {
-    await fsp.unlink(u.pfad).catch(() => {});
-    nachUploads.delete(marke);
-    return res.status(400).json({ error: 'nichts empfangen' });
-  }
-
-  // Ein vorhandenes Original mit anderer Endung würde sonst als Leiche
-  // liegen bleiben.
-  if (p.has_original && p.ext_original && p.ext_original !== u.ext) {
-    await fsp.unlink(
-      path.join(db.dirs.photos, `${p.id}-o.${p.ext_original}`)).catch(() => {});
-  }
-
-  const ziel = path.join(db.dirs.photos, `${p.id}-o.${u.ext}`);
-  await fsp.rename(u.pfad, ziel);
-  try {
-    db.markOriginal(p.id, u.ext, '');
-  } catch (e) {
-    await fsp.unlink(ziel).catch(() => {});
-    throw e;
-  }
-  nachUploads.delete(marke);
-
-  const photo = rowToPublic(db.byId(p.id));
-  sse.emit('update', photo);
-  res.json({ ok: true, bytes: u.bytes, photo });
+  const r = await teilFertig(str(req.body.marke, 64));
+  if (r.fehler === 410) return res.status(410).json({ error: 'Upload abgelaufen' });
+  if (r.fehler === 404) return res.status(404).json({ error: 'unbekannt' });
+  if (r.fehler) return res.status(400).json({ error: 'nichts empfangen' });
+  res.json({ ok: true, bytes: r.bytes, photo: r.photo });
 });
 
 app.post('/api/mod/favorite', modAuth, (req, res) => {
