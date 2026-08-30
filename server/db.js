@@ -68,6 +68,14 @@ ensureColumn('photos', 'effective_at', 'INTEGER');
 // 'exif-scan', 'exif-datei', 'aufnahme' (Erzählecke) oder 'datei'
 // (Rückfall auf das Dateidatum – unzuverlässig).
 ensureColumn('photos', 'time_source', "TEXT NOT NULL DEFAULT 'datei'");
+// Nachbereitung nach der Feier: Favoriten fürs Gästebuch der Galerie und
+// eine Prüfsumme, um mehrfach hochgeladene Dateien sicher zu erkennen.
+ensureColumn('photos', 'favorite', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('photos', 'sha256', 'TEXT');
+// Kategorie für die Filterleiste der Galerie (Trauung, Essen, …).
+ensureColumn('photos', 'category', 'TEXT');
+db.exec('CREATE INDEX IF NOT EXISTS idx_photos_sha ON photos(sha256)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_photos_cat ON photos(category)');
 
 // Bestandsdaten nachziehen (36 h Fenster, 1 h Toleranz nach vorne).
 db.exec(`
@@ -106,6 +114,33 @@ const stmt = {
   countAll: db.prepare(`SELECT COUNT(*) AS n FROM photos`),
   setArchive: db.prepare(
     `UPDATE photos SET archive = ?, effective_at = ? WHERE id = ?`),
+  setFavorite: db.prepare(`UPDATE photos SET favorite = ? WHERE id = ?`),
+  setCategory: db.prepare(`UPDATE photos SET category = ? WHERE id = ?`),
+  // Zeitraum-Zuordnung: bei 800 Fotos deutlich schneller als einzeln.
+  setCategoryZeitraum: db.prepare(
+    `UPDATE photos SET category = ?
+     WHERE hidden = 0 AND COALESCE(effective_at, uploaded_at) BETWEEN ? AND ?`),
+  idsImZeitraum: db.prepare(
+    `SELECT id FROM photos
+     WHERE hidden = 0 AND COALESCE(effective_at, uploaded_at) BETWEEN ? AND ?`),
+  setHash: db.prepare(`UPDATE photos SET sha256 = ? WHERE id = ?`),
+  // Alles, was noch keine Prüfsumme hat – für die Duplikatsuche.
+  ohneHash: db.prepare(
+    `SELECT * FROM photos WHERE sha256 IS NULL ORDER BY id ASC`),
+  // Reihenfolge nach Gast und Zeit: Grundlage für die Serien-Erkennung.
+  listNachGastUndZeit: db.prepare(
+    `SELECT * FROM photos
+     WHERE hidden = 0 AND kind IN ('photo', 'video')
+     ORDER BY uploader ASC, effective_at ASC, id ASC`),
+  listFavoriten: db.prepare(
+    `SELECT * FROM photos WHERE hidden = 0 AND favorite = 1
+     ORDER BY effective_at ASC, id ASC`),
+  listVersteckt: db.prepare(`SELECT * FROM photos WHERE hidden = 1`),
+  // Einträge, bei denen nur das Anzeigebild vorliegt – meist Videos, die
+  // zu gross fürs Hochladen waren.
+  ohneOriginal: db.prepare(
+    `SELECT * FROM photos WHERE has_original = 0 AND hidden = 0
+     ORDER BY id DESC LIMIT 500`),
   listVisible: db.prepare(
     `SELECT * FROM photos WHERE hidden = 0 ORDER BY id ASC LIMIT 5000`),
   listRecent: db.prepare(`SELECT * FROM photos ORDER BY id DESC LIMIT ?`),
@@ -158,6 +193,20 @@ export function setArchive(id, archive, effectiveAt) {
   stmt.setArchive.run(archive ? 1 : 0, effectiveAt, id);
 }
 export function listVisible() { return stmt.listVisible.all(); }
+export function setFavorite(id, fav) { stmt.setFavorite.run(fav ? 1 : 0, id); }
+export function setCategory(id, cat) { stmt.setCategory.run(cat || null, id); }
+export function setCategoryZeitraum(cat, von, bis) {
+  return stmt.setCategoryZeitraum.run(cat || null, von, bis).changes;
+}
+export function idsImZeitraum(von, bis) {
+  return stmt.idsImZeitraum.all(von, bis).map((r) => r.id);
+}
+export function setHash(id, hash) { stmt.setHash.run(hash, id); }
+export function ohneHash() { return stmt.ohneHash.all(); }
+export function listNachGastUndZeit() { return stmt.listNachGastUndZeit.all(); }
+export function listFavoriten() { return stmt.listFavoriten.all(); }
+export function listVersteckt() { return stmt.listVersteckt.all(); }
+export function ohneOriginal() { return stmt.ohneOriginal.all(); }
 export function listRecent(limit = 300) { return stmt.listRecent.all(limit); }
 export function counts() { return stmt.counts.get(); }
 export function countHidden() { return stmt.countHidden.get().n; }

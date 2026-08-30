@@ -158,6 +158,185 @@ input[type="text"]:focus {
 .status.ok { color: var(--ok); }
 .status.err { color: var(--err); }
 
+/* Zeitraum-Zuordnung */
+.zeitraum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.zeitraum label { flex: 1; min-width: 140px; }
+
+.zeitraum input, .zeitraum select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #3a3f48;
+  background: var(--card2);
+  color: var(--text);
+  font-size: .95rem;
+}
+
+/* Leiste für die Mehrfachauswahl – bleibt am unteren Rand in Daumennähe */
+.auswahlleiste {
+  position: sticky;
+  bottom: 0;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin: 10px 0;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, .5);
+}
+
+.auswahlleiste span { color: var(--accent); font-weight: 600; }
+.auswahlleiste select {
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid #3a3f48;
+  background: var(--card2);
+  color: var(--text);
+}
+
+/* Kachel-Auswahl */
+.grid.waehlen .tile { cursor: pointer; }
+.grid .tile.gewaehlt { outline: 3px solid var(--accent); outline-offset: -3px; }
+
+.grid .tile .haken {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(10, 11, 13, .7);
+  color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .8rem;
+}
+
+.grid .tile.gewaehlt .haken { background: var(--accent); color: #201a10; }
+
+.grid .tile .kat {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  font-size: .8rem;
+  background: rgba(10, 11, 13, .72);
+  border-radius: 6px;
+  padding: 2px 5px;
+}
+
+/* Nachbereitung: Serien- und Duplikatgruppen */
+.gruppe {
+  background: var(--card2);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.gruppe .kopf {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  font-size: .85rem;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.gruppe .reihe {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.gruppe .reihe img {
+  width: 84px;
+  height: 84px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex: none;
+  cursor: pointer;
+  border: 2px solid transparent;
+}
+
+.gruppe .reihe img.behalten { border-color: var(--ok); }
+.gruppe .reihe img.weg { opacity: .35; border-color: var(--err); }
+
+.gruppe .btn { padding: 6px 12px; font-size: .85rem; }
+
+/* Liste der Einträge ohne Original */
+.fehlliste { list-style: none; margin: 10px 0 0; padding: 0; }
+
+.fehlliste li {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: var(--card2);
+  border-radius: 10px;
+  padding: 8px;
+  margin-bottom: 8px;
+}
+
+.fehlliste img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex: none;
+}
+
+.fehlliste .wer { font-size: .9rem; }
+.fehlliste .wann { color: var(--muted); font-size: .8rem; }
+.fehlliste .rest { flex: 1; min-width: 0; }
+.fehlliste .fortschritt { color: var(--accent); font-size: .82rem; }
+.fehlliste .fertig { color: var(--ok); font-size: .82rem; }
+.fehlliste label.btn { flex: none; cursor: pointer; }
+
+.paketliste { list-style: none; margin: 10px 0 0; padding: 0; }
+
+.paketliste li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+  background: var(--card2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.paketliste .titel { font-weight: 600; }
+.paketliste .meta { color: var(--muted); font-size: .85rem; }
+
+/* Favoriten-Stern auf den Kacheln */
+.grid .tile .stern {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(10, 11, 13, .72);
+  color: var(--muted);
+  font-size: .85rem;
+  line-height: 1;
+  padding: 5px 6px;
+  cursor: pointer;
+}
+
+.grid .tile .stern.on { background: rgba(212, 175, 106, .9); color: #201a10; }
+
 /* Foto-Aufgaben */
 .chal-head {
   display: flex;
@@ -316,14 +495,275 @@ ul.uplist .st.err { color: var(--err); }
   font-size: 1.6rem;
 }
 
-/* Lightbox */
+/* ===================================================================
+   Galerie – zuerst fürs Handy gebaut
+   =================================================================== */
+
+body.galerie {
+  padding-bottom: 92px;          /* Platz für die Aktionsleiste unten */
+  padding-bottom: calc(92px + env(safe-area-inset-bottom));
+}
+
+body.lb-offen { overflow: hidden; }   /* kein Scrollen hinter dem Vollbild */
+
+.galkopf {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px 14px 4px;
+}
+
+.galkopf h1 { font-size: 1.35rem; margin: 0 0 2px; }
+.galkopf .sub { margin: 0; font-size: .9rem; }
+
+/* Filterleiste: klebt oben, waagrecht scrollbar */
+.chipsleiste {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 10px 14px;
+  background: linear-gradient(var(--bg) 70%, rgba(20, 22, 26, 0));
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chipsleiste::-webkit-scrollbar { display: none; }
+
+.chipsleiste .chip {
+  flex: none;
+  border: 1px solid #3a3f48;
+  background: var(--card);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 9px 15px;
+  font-size: .9rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chipsleiste .chip.an {
+  background: var(--accent);
+  color: #201a10;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.filterzeile {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2px 14px 10px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: .85rem;
+}
+
+.filterzeile select {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid #3a3f48;
+  background: var(--card2);
+  color: var(--text);
+  font-size: .9rem;
+  max-width: 55%;
+}
+
+/* Raster: drei Spalten aufs Handy, mehr auf breiten Schirmen */
+body.galerie .grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 3px;
+}
+
+@media (min-width: 620px) {
+  body.galerie .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; padding: 0 14px; }
+}
+
+body.galerie .grid .tile {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--card2);
+  border-radius: 4px;
+}
+
+@media (min-width: 620px) { body.galerie .grid .tile { border-radius: 8px; } }
+
+body.galerie .grid .tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+body.galerie .grid .tile .vid {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  font-size: .85rem;
+  text-shadow: 0 1px 3px #000;
+}
+
+body.galerie .grid .tile .fav {
+  position: absolute;
+  left: 5px;
+  top: 5px;
+  font-size: .85rem;
+  color: var(--accent);
+  text-shadow: 0 1px 3px #000;
+}
+
+body.galerie .grid .tile.off img { opacity: .25; }
+
+body.galerie .grid .tile .nope {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+}
+
+body.galerie .datehead, body.galerie .favhead {
+  grid-column: 1 / -1;
+  color: var(--accent);
+  font-size: .95rem;
+  margin: 16px 4px 2px;
+}
+
+body.galerie .favhead { font-size: 1.05rem; }
+
+/* Aktionsleiste unten – dort ist der Daumen */
+.aktionen {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 40;
+  background: rgba(20, 22, 26, .96);
+  border-top: 1px solid #2a2f37;
+  padding: 10px 14px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  backdrop-filter: blur(8px);
+}
+
+.aktionen .normal,
+.aktionen .auswahl {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.aktionen .btn { padding: 12px 16px; font-size: .95rem; }
+.aktionen .auswahl span { color: var(--accent); font-weight: 600; white-space: nowrap; }
+
+/* Mehrfachauswahl */
+.grid .tile .haken {
+  position: absolute;
+  bottom: 5px;
+  left: 5px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(10, 11, 13, .65);
+  border: 2px solid rgba(255, 255, 255, .8);
+  color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .75rem;
+}
+
+.grid .tile.gewaehlt { outline: 3px solid var(--accent); outline-offset: -3px; }
+.grid .tile.gewaehlt .haken {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #201a10;
+}
+
+/* Download-Bereich */
+.downloads {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin: 0 14px 16px;
+  max-width: 1100px;
+}
+
+@media (min-width: 1128px) { .downloads { margin: 0 auto 16px; } }
+
+.downloads h2 { font-size: 1.1rem; margin: 0 0 6px; }
+.dl-sub { font-size: .95rem; margin: 18px 0 6px; color: var(--accent); }
+.dl-hint { color: var(--muted); font-size: .85rem; margin: 0 0 12px; }
+
+.dl-zeile { display: flex; gap: 8px; align-items: center; }
+
+.dl-zeile select {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #3a3f48;
+  background: var(--card2);
+  color: var(--text);
+}
+
+.paketliste { list-style: none; margin: 0; padding: 0; }
+
+.paketliste li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+  background: var(--card2);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.paketliste .titel { font-weight: 600; }
+.paketliste a.titel { color: var(--accent); text-decoration: none; }
+.paketliste .meta { color: var(--muted); font-size: .85rem; }
+.paketliste .voll { flex-basis: 100%; color: var(--muted); font-size: .8rem; }
+
+/* Vollbildansicht */
 .lightbox {
   position: fixed;
   inset: 0;
-  background: rgba(10, 11, 13, .96);
+  background: #0b0d10;
   display: flex;
   flex-direction: column;
   z-index: 50;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.lbkopf {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  flex: none;
+}
+
+.lbpos { color: var(--muted); font-size: .9rem; }
+
+.lbicon {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 1.5rem;
+  padding: 6px 10px;
+  cursor: pointer;
 }
 
 .lightbox .media {
@@ -332,49 +772,46 @@ ul.uplist .st.err { color: var(--err); }
   align-items: center;
   justify-content: center;
   min-height: 0;
-  padding: 10px;
+  padding: 0 6px;
 }
 
-.lightbox .media img, .lightbox .media video {
+.lightbox .media img,
+.lightbox .media video {
   max-width: 100%;
   max-height: 100%;
   border-radius: 6px;
 }
 
-.lightbox .meta {
-  padding: 10px 16px 16px;
+.lbfuss { flex: none; padding: 10px 14px 14px; }
+.lbfuss .meta { text-align: center; margin-bottom: 10px; }
+.lbfuss .who { color: var(--accent); font-size: .9rem; }
+.lbfuss .cap { color: var(--muted); font-size: .85rem; }
+
+.lbknoepfe {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.lbknoepfe .btn { padding: 12px 18px; }
+.lbknoepfe .btn:first-child, .lbknoepfe .btn:last-child { padding: 12px 20px; font-size: 1.2rem; }
+
+/* Kurzmeldung */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(100px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 60;
+  background: rgba(30, 33, 39, .97);
+  border: 1px solid #3a3f48;
+  border-radius: 999px;
+  padding: 11px 20px;
+  font-size: .9rem;
+  max-width: 92vw;
   text-align: center;
-}
-
-.lightbox .meta .who { color: var(--accent); }
-.lightbox .meta .cap { color: var(--muted); font-size: .9rem; }
-
-.lightbox .nav {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 2rem;
-  padding: 20px 12px;
-  color: #fff;
-  background: none;
-  border: none;
-  cursor: pointer;
-  text-shadow: 0 1px 4px #000;
-}
-
-.lightbox .nav.prev { left: 0; }
-.lightbox .nav.next { right: 0; }
-
-.lightbox .close {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  font-size: 1.6rem;
-  background: none;
-  border: none;
-  color: #fff;
-  cursor: pointer;
-  padding: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, .5);
 }
 
 .lockscreen {

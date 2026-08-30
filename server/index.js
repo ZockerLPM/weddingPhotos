@@ -10,6 +10,8 @@ import { ulid } from './ulid.js';
 import * as db from './db.js';
 import * as sse from './sse.js';
 import { DEFAULT_CHALLENGES, sanitizeChallenges } from './challenges.js';
+import * as nach from './nachbereitung.js';
+import { DEFAULT_KATEGORIEN, sanitizeKategorien } from './kategorien.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -70,6 +72,8 @@ function rowToPublic(r) {
     caption: r.caption || '',
     challengeId: r.challenge_id || null,
     archive: !!r.archive,
+    favorite: !!r.favorite,
+    category: r.category || null,
     effectiveAt: r.effective_at || r.uploaded_at,
     timeSource: r.time_source || 'datei',
     w: r.width,
@@ -108,6 +112,18 @@ function getChallenges() {
     }
   } catch { /* kaputter Eintrag -> Standard */ }
   return DEFAULT_CHALLENGES;
+}
+
+// Kategorienliste aus den Einstellungen, mit Rückfall auf den Standard.
+function getKategorien() {
+  try {
+    const raw = db.getSetting('kategorien');
+    if (raw) {
+      const parsed = sanitizeKategorien(JSON.parse(raw));
+      if (parsed && parsed.length) return parsed;
+    }
+  } catch { /* kaputter Eintrag -> Standard */ }
+  return DEFAULT_KATEGORIEN;
 }
 
 function sanitizeExt(name) {
@@ -269,6 +285,7 @@ app.get('/api/feed', (req, res) => {
     count: c.count,
     uploaders: c.uploaders,
     challenges: getChallenges(),
+    kategorien: getKategorien(),
     photos: db.listVisible().map(rowToPublic),
   });
 });
@@ -435,6 +452,209 @@ app.post('/api/mod/archive', modAuth, (req, res) => {
   res.json({ ok: true, photo });
 });
 
+app.get('/api/categories', (req, res) => {
+  res.json({ kategorien: getKategorien() });
+});
+
+app.post('/api/mod/categories', modAuth, (req, res) => {
+  const liste = sanitizeKategorien(req.body.kategorien);
+  if (!liste) return res.status(400).json({ error: 'Liste erwartet' });
+  db.setSetting('kategorien', JSON.stringify(liste));
+  sse.emit('kategorien', { kategorien: liste });
+  res.json({ ok: true, kategorien: liste });
+});
+
+app.post('/api/mod/categories/reset', modAuth, (req, res) => {
+  db.setSetting('kategorien', JSON.stringify(DEFAULT_KATEGORIEN));
+  sse.emit('kategorien', { kategorien: DEFAULT_KATEGORIEN });
+  res.json({ ok: true, kategorien: DEFAULT_KATEGORIEN });
+});
+
+/* Kategorie zuweisen – entweder für eine Liste von IDs oder für einen
+ * ganzen Zeitraum. Der Zeitraum ist der schnelle Weg: „alles zwischen
+ * 14:00 und 15:30 ist die Trauung" ordnet 200 Fotos auf einen Schlag zu.
+ */
+app.post('/api/mod/category', modAuth, (req, res) => {
+  const kat = str(req.body.category, 40) || null;
+  if (kat && !getKategorien().some((k) => k.id === kat)) {
+    return res.status(400).json({ error: 'unbekannte Kategorie' });
+  }
+
+  if (req.body.von && req.body.bis) {
+    const von = intOr(req.body.von, 0);
+    const bis = intOr(req.body.bis, 0);
+    if (!von || !bis || bis < von) {
+      return res.status(400).json({ error: 'Zeitraum ungueltig' });
+    }
+    const ids = db.idsImZeitraum(von, bis);
+    db.setCategoryZeitraum(kat, von, bis);
+    for (const id of ids) sse.emit('update', rowToPublic(db.byId(id)));
+    return res.json({ ok: true, geaendert: ids.length, ids });
+  }
+
+  const ids = Array.isArray(req.body.ids) ? req.body.ids.slice(0, 2000) : [];
+  let n = 0;
+  for (const roh of ids) {
+    const id = str(roh, 26);
+    if (!db.byId(id)) continue;
+    db.setCategory(id, kat);
+    sse.emit('update', rowToPublic(db.byId(id)));
+    n++;
+  }
+  res.json({ ok: true, geaendert: n });
+});
+
+/* Grosse Originale nachreichen.
+ *
+ * Videos über dem Upload-Limit kamen am Fest nur als Vorschaubild an. Sie
+ * lassen sich hinterher nachreichen – in Stücken, damit die Dateigrösse
+ * keine Rolle mehr spielt: Jedes Stück ist eine eigene, kleine Anfrage,
+ * die weder an Multer noch an Caddy scheitert. Nebenbei überlebt das
+ * einen Verbindungsabbruch besser als ein Ein-Stück-Upload von 2 GB.
+ */
+const nachUploads = new Map();
+const NACH_TTL = 3 * 3600 * 1000;
+
+setInterval(() => {
+  const jetzt = Date.now();
+  for (const [marke, u] of nachUploads) {
+    if (jetzt - u.zeit > NACH_TTL) {
+      fsp.unlink(u.pfad).catch(() => {});
+      nachUploads.delete(marke);
+    }
+  }
+}, 30 * 60 * 1000).unref();
+
+app.get('/api/mod/fehlende-originale', modAuth, (req, res) => {
+  res.json({ eintraege: db.ohneOriginal().map(rowToPublic) });
+});
+
+app.post('/api/mod/nachreichen/start', modAuth, async (req, res) => {
+  const id = str(req.body.id, 26);
+  const p = db.byId(id);
+  if (!p) return res.status(404).json({ error: 'unbekannt' });
+
+  const ext = sanitizeExt(str(req.body.dateiname, 200))
+    || (p.kind === 'photo' ? 'jpg' : 'mp4');
+  const marke = crypto.randomUUID();
+  const pfad = path.join(db.dirs.tmp, 'nach-' + marke);
+  await fsp.writeFile(pfad, Buffer.alloc(0));
+
+  nachUploads.set(marke, { id, ext, pfad, bytes: 0, zeit: Date.now() });
+  res.json({ marke, ext });
+});
+
+app.post('/api/mod/nachreichen/teil', modAuth,
+  express.raw({ type: '*/*', limit: '32mb' }),
+  async (req, res) => {
+    const u = nachUploads.get(str(req.query.marke, 64));
+    if (!u) return res.status(410).json({ error: 'Upload abgelaufen' });
+    if (!req.body || !req.body.length) {
+      return res.status(400).json({ error: 'leeres Stueck' });
+    }
+    await fsp.appendFile(u.pfad, req.body);
+    u.bytes += req.body.length;
+    u.zeit = Date.now();
+    res.json({ bytes: u.bytes });
+  });
+
+app.post('/api/mod/nachreichen/fertig', modAuth, async (req, res) => {
+  const marke = str(req.body.marke, 64);
+  const u = nachUploads.get(marke);
+  if (!u) return res.status(410).json({ error: 'Upload abgelaufen' });
+
+  const p = db.byId(u.id);
+  if (!p) {
+    await fsp.unlink(u.pfad).catch(() => {});
+    nachUploads.delete(marke);
+    return res.status(404).json({ error: 'unbekannt' });
+  }
+  if (!u.bytes) {
+    await fsp.unlink(u.pfad).catch(() => {});
+    nachUploads.delete(marke);
+    return res.status(400).json({ error: 'nichts empfangen' });
+  }
+
+  // Ein vorhandenes Original mit anderer Endung würde sonst als Leiche
+  // liegen bleiben.
+  if (p.has_original && p.ext_original && p.ext_original !== u.ext) {
+    await fsp.unlink(
+      path.join(db.dirs.photos, `${p.id}-o.${p.ext_original}`)).catch(() => {});
+  }
+
+  const ziel = path.join(db.dirs.photos, `${p.id}-o.${u.ext}`);
+  await fsp.rename(u.pfad, ziel);
+  try {
+    db.markOriginal(p.id, u.ext, '');
+  } catch (e) {
+    await fsp.unlink(ziel).catch(() => {});
+    throw e;
+  }
+  nachUploads.delete(marke);
+
+  const photo = rowToPublic(db.byId(p.id));
+  sse.emit('update', photo);
+  res.json({ ok: true, bytes: u.bytes, photo });
+});
+
+app.post('/api/mod/favorite', modAuth, (req, res) => {
+  const id = str(req.body.id, 26);
+  if (!db.byId(id)) return res.status(404).json({ error: 'unbekannt' });
+  db.setFavorite(id, !!req.body.favorite);
+  const photo = rowToPublic(db.byId(id));
+  sse.emit('update', photo);
+  res.json({ ok: true, photo });
+});
+
+// Mehrere auf einmal ausblenden – für Serien und Duplikate.
+app.post('/api/mod/hide-many', modAuth, (req, res) => {
+  const ids = Array.isArray(req.body.ids) ? req.body.ids.slice(0, 2000) : [];
+  const hidden = !!req.body.hidden;
+  let n = 0;
+  for (const roh of ids) {
+    const id = str(roh, 26);
+    if (!db.byId(id)) continue;
+    db.setHidden(id, hidden);
+    sse.emit('hide', { id, hidden, photo: hidden ? undefined : rowToPublic(db.byId(id)) });
+    n++;
+  }
+  res.json({ ok: true, geaendert: n });
+});
+
+app.get('/api/mod/serien', modAuth, (req, res) => {
+  res.json({ serien: nach.serien() });
+});
+
+app.post('/api/mod/hashes', modAuth, async (req, res) => {
+  res.json(await nach.hashesNachtragen());
+});
+
+app.get('/api/mod/hashes', modAuth, (req, res) => {
+  res.json(nach.hashStatus());
+});
+
+app.get('/api/mod/duplikate', modAuth, (req, res) => {
+  res.json({ ...nach.hashStatus(), gruppen: nach.duplikate() });
+});
+
+app.post('/api/mod/downloads', modAuth, async (req, res) => {
+  res.json(await nach.downloadsBauen());
+});
+
+app.get('/api/mod/downloads', modAuth, (req, res) => {
+  res.json(nach.bauStatus());
+});
+
+// Endgültiges Löschen. Absichtlich mit Bestätigungswort, damit es nicht
+// aus Versehen per Tippfehler passiert.
+app.post('/api/mod/loeschen', modAuth, async (req, res) => {
+  if (req.body.bestaetigung !== 'LOESCHEN') {
+    return res.status(400).json({ error: 'Bestätigung fehlt' });
+  }
+  const ergebnis = await nach.verworfeneLoeschen();
+  res.json({ ok: true, ...ergebnis });
+});
+
 app.post('/api/mod/control', modAuth, (req, res) => {
   const a = req.body.action;
   if (a === 'pause') db.setSetting('paused', '1');
@@ -474,21 +694,97 @@ app.get('/api/mod/list', modAuth, (req, res) => {
 
 // ---------------------------------------------------------------- Galerie-ZIP
 
+/* Auswahl-Marken für den ZIP-Download beliebiger Zusammenstellungen.
+ *
+ * Ein Download muss ein GET sein, damit der Browser ihn wie eine Datei
+ * behandelt – eine lange Liste von IDs passt aber nicht zuverlässig in
+ * eine URL. Deshalb legt die Galerie die Auswahl per POST ab und lädt
+ * anschliessend mit der zurückgegebenen Marke.
+ */
+const auswahlen = new Map();
+const AUSWAHL_TTL = 2 * 3600 * 1000;
+
+function auswahlAufraeumen() {
+  const jetzt = Date.now();
+  for (const [marke, a] of auswahlen) {
+    if (jetzt - a.zeit > AUSWAHL_TTL) auswahlen.delete(marke);
+  }
+}
+setInterval(auswahlAufraeumen, 15 * 60 * 1000).unref();
+
+app.post('/api/gallery/auswahl', (req, res) => {
+  if (db.getSetting('gallery_open') !== '1' &&
+      !(req.body.key && safeEq(req.body.key, MOD_KEY))) {
+    return res.status(403).json({ error: 'Galerie ist geschlossen' });
+  }
+  const ids = (Array.isArray(req.body.ids) ? req.body.ids : [])
+    .slice(0, 2000).map((v) => str(v, 26)).filter(Boolean);
+  if (!ids.length) return res.status(400).json({ error: 'leere Auswahl' });
+
+  auswahlAufraeumen();
+  const marke = crypto.randomUUID();
+  auswahlen.set(marke, { ids: new Set(ids), zeit: Date.now() });
+  res.json({ marke, anzahl: ids.length });
+});
+
+// Fertige Pakete und Lieblingsbilder für die Galerie.
+app.get('/api/gallery/downloads', (req, res) => {
+  const offen = db.getSetting('gallery_open') === '1';
+  if (!offen && !(req.query.key && safeEq(req.query.key, MOD_KEY))) {
+    return res.status(403).json({ error: 'Galerie ist geschlossen' });
+  }
+  const m = nach.manifest();
+  res.json({
+    gebaut: m ? m.gebaut : null,
+    pakete: m ? m.pakete : [],
+    gaeste: [...new Set(db.listVisible().map((p) => p.uploader))]
+      .sort((a, b) => a.localeCompare(b, 'de')),
+    kategorien: getKategorien(),
+  });
+});
+
 app.get('/api/gallery/zip', (req, res) => {
   const open = db.getSetting('gallery_open') === '1';
   const modOk = req.query.key && safeEq(req.query.key, MOD_KEY);
   if (!open && !modOk) return res.status(403).json({ error: 'Galerie ist geschlossen' });
 
+  const nurGast = str(req.query.gast, 40);
+  const art = str(req.query.art, 10);
+  const kategorie = str(req.query.kategorie, 40);
+  const marke = str(req.query.auswahl, 64);
+  const auswahl = marke ? auswahlen.get(marke) : null;
+
+  // Abgelaufene oder unbekannte Marke NICHT stillschweigend ignorieren –
+  // sonst käme statt der Auswahl die komplette Galerie, und wer auf
+  // "ZIP" tippt, bekommt unerwartet mehrere Gigabyte. Diese Prüfung muss
+  // vor die ZIP-Kopfzeilen, damit die Fehlermeldung als JSON ankommt.
+  if (marke && !auswahl) {
+    return res.status(410).json({ error: 'Auswahl abgelaufen – bitte neu wählen' });
+  }
+
+  const teilName = nurGast || kategorie || art || (marke ? 'auswahl' : '');
+  const dateiname = teilName
+    ? 'hochzeit-' + teilName.replace(/[^\w\-]/g, '_') + '.zip'
+    : 'hochzeitsfotos.zip';
   res.set({
     'Content-Type': 'application/zip',
-    'Content-Disposition': 'attachment; filename="hochzeitsfotos.zip"',
+    'Content-Disposition': 'attachment; filename="' + dateiname + '"',
   });
   // store: JPEGs/Videos sind schon komprimiert, Kompression wäre nur langsam.
   const archive = archiver('zip', { store: true });
   archive.on('error', () => res.destroy());
   archive.pipe(res);
 
+  // Auf einen Gast oder eine Art eingrenzen. Diese Auswahlen sind klein
+  // genug, um sie im Fluge zu erzeugen; die grossen Pakete liegen fertig
+  // unter /d/ und lassen sich dadurch fortsetzen.
   for (const p of db.listVisible()) {
+    if (auswahl && !auswahl.ids.has(p.id)) continue;
+    if (kategorie && p.category !== kategorie) continue;
+    if (nurGast && p.uploader !== nurGast) continue;
+    if (art === 'favoriten' && !p.favorite) continue;
+    if (art === 'foto' && p.kind !== 'photo') continue;
+    if (art === 'video' && p.kind === 'photo') continue;
     const date = new Date(p.taken_at || p.uploaded_at).toISOString().slice(0, 10);
     const who = (p.uploader || 'gast').replace(/[^\w\-äöüÄÖÜß]/g, '_');
     let file, name;
@@ -505,6 +801,22 @@ app.get('/api/gallery/zip', (req, res) => {
 });
 
 // ---------------------------------------------------------------- Statisches
+
+/* Fertige Download-Pakete.
+ *
+ * express.static beantwortet Bereichsanfragen (Range), dadurch lassen sich
+ * abgebrochene Downloads fortsetzen – der entscheidende Unterschied zu
+ * einem im Fluge erzeugten ZIP.
+ */
+app.use('/d', (req, res, next) => {
+  if (db.getSetting('gallery_open') === '1') return next();
+  if (req.query.key && safeEq(req.query.key, MOD_KEY)) return next();
+  res.status(403).json({ error: 'Galerie ist geschlossen' });
+}, express.static(nach.downloadDir, {
+  index: false,
+  fallthrough: false,
+  maxAge: '1h',
+}));
 
 // Bilddateien: IDs sind einmalig, daher aggressiv cachen.
 app.use('/i', express.static(db.dirs.photos, {

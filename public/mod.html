@@ -23,6 +23,9 @@
     <button class="btn" id="btnGallery">🔒 Galerie</button>
     <button class="btn" id="btnRecap">🌙 Rückblick starten</button>
     <button class="btn" id="btnEditChal">🎯 Aufgaben bearbeiten</button>
+    <button class="btn" id="btnKat">🗂️ Kategorien</button>
+    <button class="btn" id="btnNach">🧹 Nach der Feier</button>
+    <button class="btn" id="btnAuswahl">☑️ Mehrere auswählen</button>
     <button class="btn danger" id="btnReload">🔄 Fotowand neu laden</button>
   </div>
 
@@ -39,6 +42,55 @@
     </div>
     <p class="status" id="chalStatus"></p>
   </section>
+
+  <section class="editor hidden" id="nachEditor">
+    <h2>🧹 Nach der Feier</h2>
+    <p class="hint-left">Aussortieren, Lieblingsbilder wählen und die
+      Download-Pakete für die Gäste vorbereiten. Vorher ein Backup ziehen.</p>
+
+    <div class="editor-actions">
+      <button class="btn" id="btnSerien">🎞️ Serien finden</button>
+      <button class="btn" id="btnDupes">🧬 Duplikate finden</button>
+      <button class="btn primary" id="btnDownloads">📦 Downloads vorbereiten</button>
+      <button class="btn" id="btnFehlende">🎬 Originale nachreichen</button>
+      <button class="btn danger" id="btnPurge">🗑️ Ausgeblendete löschen</button>
+    </div>
+    <p class="status" id="nachStatus"></p>
+    <div id="nachErgebnis"></div>
+  </section>
+
+  <section class="editor hidden" id="katEditor">
+    <h2>🗂️ Kategorien</h2>
+    <p class="hint-left">Symbol und Name frei änderbar. Die Gäste filtern die
+      Galerie damit. Umbenennen ist unbedenklich – bereits zugeordnete Fotos
+      behalten ihre Kategorie.</p>
+    <ul class="chal-edit" id="katRows"></ul>
+    <div class="editor-actions">
+      <button class="btn" id="btnAddKat">＋ Kategorie</button>
+      <button class="btn" id="btnResetKat">↺ Standard</button>
+      <button class="btn primary" id="btnSaveKat">Speichern</button>
+    </div>
+    <p class="status" id="katStatus"></p>
+
+    <h3 class="dl-sub">Ganzen Zeitraum zuordnen</h3>
+    <p class="hint-left">Der schnelle Weg: „alles zwischen 14:00 und 15:30 ist
+      die Trauung" ordnet Hunderte Fotos auf einmal zu.</p>
+    <div class="zeitraum">
+      <label class="field">Von<input type="datetime-local" id="katVon"></label>
+      <label class="field">Bis<input type="datetime-local" id="katBis"></label>
+      <label class="field">Kategorie<select id="katWahlZeit"></select></label>
+      <button class="btn" id="btnKatZeit">Zuordnen</button>
+    </div>
+    <p class="status" id="katZeitStatus"></p>
+  </section>
+
+  <div class="auswahlleiste hidden" id="auswahlLeiste">
+    <span id="auswahlZahl">0 ausgewählt</span>
+    <select id="katWahl"></select>
+    <button class="btn" id="btnKatZuweisen">Kategorie setzen</button>
+    <button class="btn" id="btnAuswahlAus">Ausblenden</button>
+    <button class="btn" id="btnAuswahlEnde">Fertig</button>
+  </div>
 
   <div class="grid" id="grid"></div>
 </div>

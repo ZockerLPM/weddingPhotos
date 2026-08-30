@@ -130,6 +130,34 @@ if (fremd.length) {
   line('  Unbekannte Dateinamen (erste 5): ' + fremd.slice(0, 5).join(', '));
 }
 
+// Einträge, bei denen nur das Anzeigebild vorliegt. Typisch: Videos, die zu
+// gross fürs Hochladen waren, oder abgebrochene Übertragungen. Diese lassen
+// sich nachreichen – in der Moderation unter "Originale nachreichen" oder
+// von Hand (siehe README).
+const ohneOriginal = rows.filter((r) => !r.has_original && !r.hidden);
+if (ohneOriginal.length) {
+  line('');
+  line('=== Ohne Original (nur Anzeigebild) ===');
+  line(`${n(ohneOriginal.length)}  Einträge, davon ` +
+       `${ohneOriginal.filter((r) => r.kind !== 'photo').length} Videos/Botschaften`);
+  line('');
+  line('  ID                          Art       Wer              Wann');
+  for (const r of ohneOriginal.slice(0, 40)) {
+    const wann = new Date(r.effective_at || r.uploaded_at)
+      .toLocaleString('de-AT', { day: '2-digit', month: '2-digit',
+        hour: '2-digit', minute: '2-digit' });
+    line('  ' + r.id + '  ' + String(r.kind).padEnd(9) +
+         String(r.uploader).slice(0, 15).padEnd(16) + wann);
+  }
+  if (ohneOriginal.length > 40) {
+    line(`  … und ${ohneOriginal.length - 40} weitere`);
+  }
+  line('');
+  line('  Nachreichen: Datei als  {ID}-o.{endung}  nach data/photos/ legen');
+  line('  und dieses Skript mit REPAIR=1 laufen lassen – oder bequemer über');
+  line('  die Moderation unter "Originale nachreichen".');
+}
+
 // ---------------------------------------------------------------- Reparatur
 
 if (!REPAIR) {

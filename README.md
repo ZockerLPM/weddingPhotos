@@ -144,6 +144,143 @@ Notiz („🎙️ Eine Botschaft von Werner"), **es wird kein Ton im Raum
 abgespielt**. Angeschaut werden die Botschaften in der Galerie.
 Braucht HTTPS – über `http://` verweigern Browser den Kamerazugriff.
 
+## Kategorien
+
+Trauung, Essen, Geschenke … – die Gäste filtern die Galerie damit. Verwaltet
+wird die Liste in der Moderation unter **🗂️ Kategorien**: Symbol und Name
+frei änderbar, Standardliste in [`server/kategorien.js`](server/kategorien.js).
+Wie bei den Foto-Aufgaben trägt jede Kategorie eine unveränderliche `id`,
+die beim Umbenennen erhalten bleibt – zugeordnete Fotos behalten also ihre
+Kategorie.
+
+**Zuordnen** geht auf zwei Wegen:
+
+- **Ganzen Zeitraum** – der schnelle Weg. „Alles zwischen 14:00 und 15:30 ist
+  die Trauung" ordnet Hunderte Fotos auf einmal zu.
+- **Mehrere auswählen** – Knopf **☑️** in der Moderation, dann Kacheln
+  antippen und unten die Kategorie setzen. Dieselbe Auswahl lässt sich auch
+  auf einen Schlag ausblenden.
+
+Beim Bau der Download-Pakete entsteht automatisch **ein Paket je belegter
+Kategorie** – der häufigste Wunsch ist „alles von der Trauung", nicht alles
+überhaupt.
+
+## Die Galerie auf dem Handy
+
+Die Galerie ist fürs Handy gebaut, nicht nur dafür angepasst:
+
+- **Filterleiste** oben, waagrecht scrollbar, klebt beim Scrollen: Alle ·
+  ★ Favoriten · je Kategorie mit Anzahl · Ohne Kategorie. Dazu ein
+  Personenfilter.
+- **Raster** mit drei Spalten und minimalen Abständen – auf dem Handy zählt
+  jeder Pixel; ab 620 px Breite wird automatisch umgestellt.
+- **Aktionsleiste unten**, weil dort der Daumen ist. Sie klebt am unteren
+  Rand und respektiert die Gerätekante (`safe-area-inset`).
+- **Vollbildansicht** mit Wischgesten: seitlich blättern, nach unten
+  schliessen. Nachbarbilder werden vorgeladen, Videos laufen inline.
+- **Mehrfachauswahl** per Knopf oder langem Drücken auf eine Kachel.
+  „Alle" wählt die gerade gefilterte Ansicht.
+
+### In die Fotos-App sichern
+
+Der Knopf **📲 Sichern** übergibt die Dateien über die
+Web-Share-Schnittstelle ans Betriebssystem; dort erscheint „In Fotos
+sichern" bzw. „Bilder sichern". Das ist der einzige Weg, den ein Browser
+dafür hat, und er funktioniert auf iOS und Android.
+
+**Ein eigenes Album kann eine Webseite nicht anlegen.** Das entscheidet das
+Betriebssystem – dafür bräuchte es eine echte App. Auf iOS landen die Bilder
+in „Zuletzt", auf Android im Ordner der Downloads bzw. der Galerie. Wer die
+Fotos gebündelt in einem Ordner haben will, lädt ein ZIP-Paket und entpackt
+es; daraus wird auf Android ein eigenes Album.
+
+Grenzen, die bewusst gesetzt sind: höchstens **10 Dateien** und **120 MB**
+pro Vorgang. Darüber bricht vor allem iOS ab, ohne es zu melden – dann kommt
+lieber ein verständlicher Hinweis. Wo Teilen nicht geht (die meisten
+Rechner-Browser), wird stattdessen heruntergeladen.
+
+### Downloads in der Galerie
+
+| Weg | Wofür |
+|---|---|
+| **Fertige Pakete** unter ⬇️ Herunterladen | Alles, Fotos, Videos, je Kategorie – als vorbereitete Dateien, fortsetzbar |
+| **Nur von einer Person** | im Fluge erzeugt, klein genug |
+| **Auswahl als ZIP** | beliebige Zusammenstellung aus der Mehrfachauswahl |
+| **📲 Sichern** | direkt in die Fotos-App des Handys |
+| **Einzelbild** | Knopf ⬇️ in der Vollbildansicht |
+
+Für die Auswahl legt die Galerie ihre Liste per POST ab und lädt mit der
+zurückgegebenen Marke – eine lange Liste von IDs passt nicht zuverlässig in
+eine URL, ein Download muss aber ein GET sein. Die Marke gilt zwei Stunden;
+danach meldet der Server `410`, statt stillschweigend die ganze Galerie zu
+liefern.
+
+Persönliche Links: `/galerie?gast=Werner` und `/galerie?kategorie=trauung`.
+
+## Nach der Feier
+
+In der Moderation unter **🧹 Nach der Feier**. Sinnvolle Reihenfolge:
+
+**1. Backup ziehen.** Ausblenden ist umkehrbar, endgültiges Löschen nicht.
+
+**2. Aussortieren.** Auf jeder Kachel liegt ein **★** für Lieblingsbilder und
+der 🕐/📼-Schalter für die Einordnung; ein Tipp auf die Kachel blendet aus.
+Zwei Helfer beschleunigen das erheblich:
+
+- **🎞️ Serien finden** – Aufnahmen desselben Gasts innerhalb von zehn
+  Sekunden werden gruppiert („4 Aufnahmen von Werner um 21:34, in 6 s").
+  Grün umrandet bleibt, blass fliegt raus; antippen schaltet um, ein Knopf
+  übernimmt die Gruppe. Zeitfenster: `SERIE_SEKUNDEN`.
+- **🧬 Duplikate finden** – berechnet eine Prüfsumme über alle Originale und
+  zeigt Gruppen mit **identischem Inhalt**. Nur exakte Treffer; ähnliche
+  Bilder zu erraten würde am Ende echte Aufnahmen wegwerfen. Der erste
+  Durchlauf liest alle Originale einmal und dauert Minuten, danach ist er
+  sofort.
+
+**3. 🎬 Originale nachreichen.** Videos über dem Upload-Limit kamen am Fest
+nur als Vorschaubild an. Der Knopf listet alle Beiträge ohne Original mit
+Vorschaubild, Name und Uhrzeit – Datei auswählen, fertig.
+
+Die Datei geht in **8-MB-Stücken** hoch. Dadurch spielt die Grösse keine
+Rolle mehr: Weder Multer noch Caddy sehen je mehr als ein Stück, und ein
+Verbindungsabbruch kostet höchstens ein Stück statt der ganzen Datei. Ein
+vorhandenes Original wird ersetzt, eine alte Datei mit anderer Endung
+dabei entfernt.
+
+**Von Hand geht es auch** – praktisch, wenn die Dateien schon auf dem Server
+liegen. Die passenden IDs nennt `check-data.cjs` unter „Ohne Original":
+
+```bash
+# Datei unter dem Namen {ID}-o.{endung} ablegen …
+scp GROSS.MOV deploy@SERVER:/opt/hochzeit/app/data/photos/01M03PCYDD…-o.mov
+# … und die Verknüpfung nachtragen lassen
+docker compose exec -T -e DATA_DIR=/data -e REPAIR=1 app node < scripts/check-data.cjs
+```
+
+**4. Kategorien zuordnen** (siehe oben) – am schnellsten über Zeiträume.
+
+**5. 📦 Downloads vorbereiten.** Erzeugt fertige ZIP-Dateien auf der Platte.
+Erst bauen, wenn Aussortieren, Nachreichen und Zuordnen fertig sind – die Pakete
+enthalten genau das, was dann sichtbar ist. Braucht kurzzeitig noch einmal
+so viel Plattenplatz wie die Fotos.
+
+**6. Galerie öffnen.** Erst danach sehen die Gäste die Pakete.
+
+**7. 🗑️ Ausgeblendete löschen** – wenn ihr sicher seid. Verlangt eine
+Rückfrage und das Wort `LOESCHEN`, entfernt Einträge und Dateien
+endgültig. Nur aus dem Backup wiederherstellbar.
+
+### Warum die ZIPs vorab gebaut werden
+
+Ein im Fluge erzeugtes ZIP hat keine bekannte Länge und lässt sich **nicht
+fortsetzen**: Bricht die Verbindung bei 4 von 5 GB ab, fängt der Gast wieder
+bei null an – auf dem Handy scheitert das praktisch immer.
+
+Fertige Dateien liefert der Server dagegen mit Längenangabe und
+Bereichsanfragen aus (`/d/…`, über `express.static`). Ein abgebrochener
+Download setzt dort fort, wo er aufhörte. Zusätzlich sind die grossen
+Pakete in Teile von 1,5 GB geschnitten (`ZIP_TEIL_MB`).
+
 ## Bestand prüfen
 
 Wenn im `data`-Ordner mehr zu liegen scheint, als in Fotowand und Galerie
@@ -186,12 +323,14 @@ npm test
 ```
 
 Startet für jede Suite einen eigenen Server mit temporärem Datenverzeichnis
-und prüft 128 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
+und prüft 206 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
 bekannten Metadaten), Grundfunktionen (Upload, Moderation, Galerie, ZIP,
 Fehlerfälle), die Upload-Warteschlange inklusive nachgebautem iOS-Verhalten,
 die Abendfunktionen, Altfoto-Erkennung und Aufgaben-Editor sowie die
-Übereinstimmung von Datenbank und Dateien (inklusive gleichzeitiger
-Uploads mit derselben clientId). Vor jedem Deploy einmal laufen lassen.
+Übereinstimmung von Datenbank und Dateien, die gesamte Nachbereitung –
+Serien, Duplikate, Favoriten, Paketbau, fortsetzbare Downloads und
+endgültiges Löschen –, das stückweise Nachreichen grosser Originale sowie
+Kategorien und Auswahl-Downloads. Vor jedem Deploy einmal laufen lassen.
 
 ## Projektstruktur
 
@@ -199,6 +338,8 @@ Uploads mit derselben clientId). Vor jedem Deploy einmal laufen lassen.
 server/           Node.js-Backend (Express, SQLite, SSE)
   index.js        Routen: Upload, Feed, Stream, Moderation, Rückblick, ZIP, Health
   challenges.js   Standard-Aufgaben und Prüfung der bearbeiteten Liste
+  kategorien.js   Standard-Kategorien und Prüfung der bearbeiteten Liste
+  nachbereitung.js Serien, Duplikate, Download-Pakete, endgültiges Löschen
   db.js           SQLite-Schema, Migrationen und Zugriffe (better-sqlite3, WAL)
   sse.js          Event-Verteiler mit Nachhol-Logik
   ulid.js         Zeitlich sortierbare Foto-IDs
@@ -206,7 +347,7 @@ public/           Frontend, reines HTML/CSS/JS ohne Build-Schritt
   index.html      Upload + Foto-Aufgaben  + js/upload.js, js/queue.js
   show.html       Fotowand + Rückblick    + js/show.js
   box.html        Erzählecke              + js/box.js
-  galerie.html    Galerie                 + js/gallery.js
+  galerie.html    Galerie (handy-zuerst)  + js/gallery.js
   mod.html        Moderation              + js/mod.js
   js/challenges.js  lädt die Aufgabenliste vom Server, von mehreren Seiten genutzt
   js/exif.js        liest den Aufnahmezeitpunkt aus den Bild-Metadaten
@@ -215,7 +356,7 @@ scripts/
   backup-pull.ps1 dasselbe nativ unter Windows, ohne WSL
   check-data.cjs  Datenbank gegen die Dateien prüfen und reparieren
   test/           Testsuiten (npm test)
-data/             entsteht zur Laufzeit: app.db + photos/ (nicht im Git)
+data/             entsteht zur Laufzeit: app.db + photos/ + downloads/ (nicht im Git)
 ```
 
 Das Datenbankschema wird beim Start automatisch nachgezogen (`ensureColumn`
@@ -465,6 +606,7 @@ anlegen, gesichertes `data/` nach `/opt/hochzeit/app/data/` kopieren,
 | Grosses Video kommt nicht an | Die Seite muss offen bleiben, bis der Upload durch ist – ein Banner und eine Rückfrage beim Schliessen weisen jetzt darauf hin. Der Fortschritt steht in der Liste |
 | Video wird nicht hochgeladen | Behoben. Bisher scheiterte der ganze Upload, wenn sich kein Standbild aus dem Video gewinnen liess. Jetzt gibt es einen Platzhalter, das Video geht in jedem Fall hoch |
 | Video zeigt eine schwarze Kachel mit 🎬 | Der Browser konnte kein Standbild gewinnen (oft HEVC vom iPhone in Chrome). Das Video selbst ist vollständig gespeichert |
+| Video kam nur als Vorschaubild an | War zu gross fürs Hochladen. In der Moderation unter **🧹 Nach der Feier → 🎬 Originale nachreichen** die Datei auswählen – sie geht in Stücken hoch, die Grösse spielt keine Rolle |
 | Video lässt sich in der Galerie nicht abspielen | `.mov` mit HEVC spielt Safari, Chrome oft nicht. Die Datei ist in Ordnung – über den Download-Knopf lokal öffnen |
 | `mkstemp ... Operation not permitted` beim Backup | Ziel liegt auf einem Windows-Laufwerk unter WSL. Aktuelles `backup-pull.sh` verwenden oder auf `backup-pull.ps1` wechseln |
 | Backup: `bash: syntax error near unexpected token '('` | Behoben. PowerShell entfernte beim Aufruf nativer Programme die inneren Anführungszeichen, dadurch kam `node -e eval(...)` ohne Quotes auf dem Server an. Das Skript schickt das Snippet jetzt über stdin an `node` |

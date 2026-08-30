@@ -2,48 +2,94 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#14161a">
   <meta name="robots" content="noindex, nofollow">
   <title>Galerie – Unsere Hochzeitsfotos</title>
   <link rel="stylesheet" href="/app.css">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
 </head>
-<body>
-<div class="page wide">
-  <header>
+<body class="galerie">
+
+<div id="lock" class="lockscreen hidden">
+  <div class="big">🔒</div>
+  <h2>Die Galerie ist noch geschlossen</h2>
+  <p class="hint">Nach der Hochzeit findet ihr hier alle Fotos zum Ansehen
+    und Herunterladen. Schaut bald wieder vorbei!</p>
+</div>
+
+<div id="content" class="hidden">
+
+  <header class="galkopf">
     <h1>💒 Unsere Hochzeitsfotos</h1>
     <p class="sub" id="subline">&nbsp;</p>
   </header>
 
-  <div id="lock" class="lockscreen hidden">
-    <div class="big">🔒</div>
-    <h2>Die Galerie ist noch geschlossen</h2>
-    <p class="hint">Nach der Hochzeit findet ihr hier alle Fotos zum Ansehen
-      und Herunterladen. Schaut bald wieder vorbei!</p>
+  <!-- Filterleiste: klebt oben, waagrecht scrollbar -->
+  <nav class="chipsleiste" id="chipsleiste" aria-label="Filter"></nav>
+
+  <div class="filterzeile">
+    <span id="zaehler"></span>
+    <select id="filter" aria-label="Nach Person filtern">
+      <option value="">Alle Gäste</option>
+    </select>
   </div>
 
-  <div id="content" class="hidden">
-    <div class="toolbar">
-      <select id="filter">
-        <option value="">Alle Gäste</option>
-      </select>
-      <a class="btn primary" href="/api/gallery/zip">⬇️ Alle herunterladen (ZIP)</a>
+  <section class="downloads hidden" id="downloads">
+    <h2>⬇️ Herunterladen</h2>
+    <p class="dl-hint">Grosse Pakete sind in Teile geschnitten. Bricht ein
+      Download ab, setzt der Browser ihn an derselben Stelle fort – einfach
+      nochmal antippen.</p>
+    <ul class="paketliste" id="paketliste"></ul>
+
+    <h3 class="dl-sub">Nur von einer Person</h3>
+    <div class="dl-zeile">
+      <select id="gastWahl" aria-label="Person wählen"></select>
+      <a class="btn" id="gastLink" href="#" download>⬇️ Laden</a>
     </div>
-    <div class="grid" id="grid"></div>
+  </section>
+
+  <div class="grid" id="grid"></div>
+  <p class="fineprint" id="fussnote"></p>
+</div>
+
+<!-- Aktionsleiste unten, in Daumennähe -->
+<div class="aktionen hidden" id="aktionen">
+  <div class="normal" id="aktionenNormal">
+    <button class="btn primary" id="btnDownloads">⬇️ Herunterladen</button>
+    <button class="btn" id="btnAuswahl">☑️ Auswählen</button>
+  </div>
+  <div class="auswahl hidden" id="aktionenAuswahl">
+    <span id="auswahlZahl">0</span>
+    <button class="btn primary" id="btnSichern">📲 Sichern</button>
+    <button class="btn" id="btnAuswahlZip">⬇️ ZIP</button>
+    <button class="btn" id="btnAuswahlAlle">Alle</button>
+    <button class="btn" id="btnAuswahlEnde">✕</button>
   </div>
 </div>
 
+<!-- Vollbildansicht -->
 <div class="lightbox hidden" id="lightbox">
-  <button class="close" id="lbClose" aria-label="Schliessen">✕</button>
-  <button class="nav prev" id="lbPrev" aria-label="Zurück">‹</button>
-  <button class="nav next" id="lbNext" aria-label="Weiter">›</button>
+  <div class="lbkopf">
+    <span class="lbpos" id="lbPos"></span>
+    <button class="lbicon" id="lbClose" aria-label="Schliessen">✕</button>
+  </div>
   <div class="media" id="lbMedia"></div>
-  <div class="meta">
-    <div class="who" id="lbWho"></div>
-    <div class="cap" id="lbCap"></div>
-    <div style="margin-top:8px"><a class="btn" id="lbDownload" download>Original herunterladen</a></div>
+  <div class="lbfuss">
+    <div class="meta">
+      <div class="who" id="lbWho"></div>
+      <div class="cap" id="lbCap"></div>
+    </div>
+    <div class="lbknoepfe">
+      <button class="btn" id="lbPrev" aria-label="Zurück">‹</button>
+      <button class="btn primary" id="lbSichern">📲 Sichern</button>
+      <a class="btn" id="lbDownload" download>⬇️</a>
+      <button class="btn" id="lbNext" aria-label="Weiter">›</button>
+    </div>
   </div>
 </div>
+
+<div class="toast hidden" id="toast"></div>
 
 <script src="/js/challenges.js"></script>
 <script src="/js/gallery.js"></script>
