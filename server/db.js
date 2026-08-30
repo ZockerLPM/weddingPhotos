@@ -80,6 +80,12 @@ ensureColumn('photos', 'reviewed', 'INTEGER NOT NULL DEFAULT 0');
 // worauf sie sich einlässt – sonst zieht sie erst 400 MB in den Speicher
 // und stellt dann fest, dass das Handy das nicht sichern kann.
 ensureColumn('photos', 'original_bytes', 'INTEGER');
+// Handy-Version eines Videos: kleiner gerechnet, damit sie sich auf dem
+// Telefon in einem Zug in die Fotos-App sichern lässt. 0 = keine.
+ensureColumn('photos', 'mobile_bytes', 'INTEGER NOT NULL DEFAULT 0');
+// „Kein Original vorhanden oder gewünscht" – blendet den Eintrag aus der
+// Liste der nachzureichenden aus, ohne ihn zu verstecken.
+ensureColumn('photos', 'original_skip', 'INTEGER NOT NULL DEFAULT 0');
 
 // Für den Bestand einmalig nachtragen.
 {
@@ -145,6 +151,14 @@ const stmt = {
   setFavorite: db.prepare(`UPDATE photos SET favorite = ? WHERE id = ?`),
   setCategory: db.prepare(`UPDATE photos SET category = ? WHERE id = ?`),
   setReviewed: db.prepare(`UPDATE photos SET reviewed = ? WHERE id = ?`),
+  setOriginalSkip: db.prepare(`UPDATE photos SET original_skip = ? WHERE id = ?`),
+  setMobile: db.prepare(`UPDATE photos SET mobile_bytes = ? WHERE id = ?`),
+  // Videos, für die noch keine Handy-Version vorliegt.
+  ohneMobil: db.prepare(
+    `SELECT * FROM photos
+     WHERE hidden = 0 AND has_original = 1 AND mobile_bytes = 0
+       AND kind IN ('video', 'message')
+     ORDER BY id ASC`),
   countOffen: db.prepare(
     `SELECT COUNT(*) AS n FROM photos WHERE reviewed = 0`),
   // Zeitraum-Zuordnung: bei 800 Fotos deutlich schneller als einzeln.
@@ -171,7 +185,11 @@ const stmt = {
   // zu gross fürs Hochladen waren.
   ohneOriginal: db.prepare(
     `SELECT * FROM photos WHERE has_original = 0 AND hidden = 0
+       AND original_skip = 0
      ORDER BY id DESC LIMIT 500`),
+  uebersprungen: db.prepare(
+    `SELECT COUNT(*) AS n FROM photos
+     WHERE has_original = 0 AND hidden = 0 AND original_skip = 1`),
   listVisible: db.prepare(
     `SELECT * FROM photos WHERE hidden = 0 ORDER BY id ASC LIMIT 5000`),
   listRecent: db.prepare(`SELECT * FROM photos ORDER BY id DESC LIMIT ?`),
@@ -233,6 +251,10 @@ export function listVisible() { return stmt.listVisible.all(); }
 export function setFavorite(id, fav) { stmt.setFavorite.run(fav ? 1 : 0, id); }
 export function setCategory(id, cat) { stmt.setCategory.run(cat || null, id); }
 export function setReviewed(id, v) { stmt.setReviewed.run(v ? 1 : 0, id); }
+export function setOriginalSkip(id, v) { stmt.setOriginalSkip.run(v ? 1 : 0, id); }
+export function setMobile(id, bytes) { stmt.setMobile.run(bytes || 0, id); }
+export function ohneMobil() { return stmt.ohneMobil.all(); }
+export function uebersprungen() { return stmt.uebersprungen.get().n; }
 export function countOffen() { return stmt.countOffen.get().n; }
 export function setCategoryZeitraum(cat, von, bis) {
   return stmt.setCategoryZeitraum.run(cat || null, von, bis).changes;

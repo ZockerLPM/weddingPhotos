@@ -330,6 +330,59 @@ body.auswahl-offen { padding-bottom: 120px; }
 .fehlliste .fertig { color: var(--ok); font-size: .82rem; }
 .fehlliste label.btn { flex: none; cursor: pointer; }
 
+/* Auswahl der Pakete vor dem Bau */
+.bauwahl {
+  background: var(--card2);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 10px 0;
+}
+
+.bauwahl label {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  padding: 7px 0;
+  font-size: .92rem;
+  cursor: pointer;
+}
+
+.bauwahl input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+  flex: none;
+}
+
+.bauwahl .zahl { color: var(--muted); font-size: .85rem; margin-left: auto; }
+
+.bauwahl .teilzeile {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #333842;
+  font-size: .88rem;
+  color: var(--muted);
+}
+
+.bauwahl .teilzeile input {
+  width: 5rem;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid #3a3f48;
+  background: var(--card);
+  color: var(--text);
+}
+
+.bausumme {
+  text-align: center;
+  color: var(--accent);
+  font-size: .92rem;
+  margin: 10px 0;
+}
+
 /* Verlauf */
 .verlauf {
   list-style: none;
@@ -810,6 +863,22 @@ body.galerie .favhead { font-size: 1.05rem; }
   background: var(--card2);
   color: var(--text);
 }
+
+/* Der eine grosse Knopf für alle, die einfach alles wollen. */
+.alles-knopf {
+  display: block;
+  background: var(--accent);
+  color: #201a10;
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  text-decoration: none;
+  text-align: center;
+}
+
+.alles-knopf:active { filter: brightness(.92); }
+.alles-titel { display: block; font-size: 1.05rem; font-weight: 700; }
+.alles-meta { display: block; font-size: .82rem; opacity: .8; margin-top: 3px; }
 
 .paketliste { list-style: none; margin: 0; padding: 0; }
 

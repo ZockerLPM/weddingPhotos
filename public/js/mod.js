@@ -831,18 +831,187 @@
       .catch(function () {});
   }
 
-  document.getElementById('btnDownloads').addEventListener('click', function () {
-    if (!confirm('Download-Pakete jetzt bauen?\n\n' +
-      'Dabei werden alle sichtbaren Fotos und Videos in ZIP-Dateien gepackt. ' +
-      'Das braucht kurzzeitig noch einmal so viel Plattenplatz wie die Fotos ' +
-      'selbst und dauert je nach Menge einige Minuten.\n\n' +
-      'Vorher aussortieren – danach gebaute Pakete enthalten nur noch das, ' +
-      'was sichtbar ist.')) return;
+  /* Handy-Versionen der Videos.
+   *
+   * Auf iOS führt der einzige Weg in die Fotos-App über die
+   * Web-Share-Schnittstelle, und die verlangt die Datei komplett im
+   * Speicher. Ein 300-MB-Video scheitert daran. Eine kleiner gerechnete
+   * Fassung löst genau das.
+   */
+  function handyStand() {
+    fetch('/api/mod/handyversionen', { headers: { 'x-mod-key': key } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.moeglich === false) {
+          nachStatus('ffmpeg ist im Container nicht vorhanden – bitte neu ' +
+            'bauen (docker compose up -d --build).', 'err');
+          return;
+        }
+        if (d.laeuft) {
+          nachStatus('Handy-Versionen: ' + d.fertig + ' von ' + d.gesamt +
+            ' · gerade ' + (d.schritt || '…'));
+          setTimeout(handyStand, 2000);
+          return;
+        }
+        if (d.gesamt > 0 && d.schritt === 'fertig') {
+          nachStatus('✓ ' + d.gesamt + ' Handy-Versionen erzeugt.', 'ok');
+        } else if (d.offen === 0) {
+          nachStatus('Alle Videos haben bereits eine Handy-Version.', 'ok');
+        } else {
+          nachStatus(d.offen + ' Videos hätten gern eine Handy-Version.');
+        }
+      })
+      .catch(function () {});
+  }
+
+  document.getElementById('btnHandy').addEventListener('click', function () {
     elNachErgebnis.textContent = '';
-    nachStatus('Pakete werden gebaut …');
-    api('/api/mod/downloads', {}).then(function () { pruefeDownloads(); })
-      .catch(function () { nachStatus('Start fehlgeschlagen.', 'err'); });
+    fetch('/api/mod/handyversionen', { headers: { 'x-mod-key': key } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.moeglich === false) {
+          nachStatus('ffmpeg fehlt im Container – bitte neu bauen.', 'err');
+          return;
+        }
+        if (d.laeuft) { handyStand(); return; }
+        if (!d.offen) {
+          nachStatus('Alle Videos haben bereits eine Handy-Version.', 'ok');
+          return;
+        }
+        if (!confirm(d.offen + ' Videos bekommen eine kleinere Fassung, damit ' +
+          'sie sich auf dem Handy direkt in die Fotos-App sichern lassen.\n\n' +
+          'Das rechnet der Server im Hintergrund – je nach Menge dauert es ' +
+          'eine Weile. Die Originale bleiben unangetastet.')) return;
+        nachStatus('Wird gestartet …');
+        api('/api/mod/handyversionen', {}).then(handyStand)
+          .catch(function () { nachStatus('Start fehlgeschlagen.', 'err'); });
+      })
+      .catch(function () { nachStatus('Abruf fehlgeschlagen.', 'err'); });
   });
+
+  // Auswahl der Pakete – wird vor dem Bau gezeigt und laufend nachgerechnet.
+  var bauWahl = { klein: true, fotos: true, videos: true, kategorien: true, teilMB: 1500 };
+
+  function vorschauZeigen() {
+    var frage = '/api/mod/downloads/vorschau?teilMB=' + bauWahl.teilMB;
+    fetch(frage, { headers: { 'x-mod-key': key } })
+      .then(function (r) { return r.json(); })
+      .then(function (v) {
+        elNachErgebnis.textContent = '';
+
+        // Kästchen für die Auswahl
+        var box = document.createElement('div');
+        box.className = 'bauwahl';
+        var arten = [
+          ['klein', 'Kleine Version (Bildschirmgrösse)'],
+          ['fotos', 'Fotos in Originalgrösse'],
+          ['videos', 'Videos'],
+          ['kategorien', 'Ein Paket je Kategorie'],
+        ];
+        arten.forEach(function (a) {
+          var lab = document.createElement('label');
+          var cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = bauWahl[a[0]];
+          cb.addEventListener('change', function () {
+            bauWahl[a[0]] = cb.checked;
+            zeichneListe(v);
+          });
+          var txt = document.createElement('span');
+          txt.textContent = a[1];
+          var zahl = document.createElement('span');
+          zahl.className = 'zahl';
+          var passend = v.pakete.filter(function (p) { return p.art === a[0].replace(/n$/, ''); });
+          if (a[0] === 'klein') passend = v.pakete.filter(function (p) { return p.art === 'klein'; });
+          if (a[0] === 'fotos') passend = v.pakete.filter(function (p) { return p.art === 'foto'; });
+          if (a[0] === 'videos') passend = v.pakete.filter(function (p) { return p.art === 'video'; });
+          if (a[0] === 'kategorien') passend = v.pakete.filter(function (p) { return p.art === 'kategorie'; });
+          zahl.textContent = passend.length
+            ? passend.length + (passend.length === 1 ? ' Paket' : ' Pakete')
+            : 'nichts vorhanden';
+          lab.appendChild(cb);
+          lab.appendChild(txt);
+          lab.appendChild(zahl);
+          box.appendChild(lab);
+        });
+
+        var teil = document.createElement('div');
+        teil.className = 'teilzeile';
+        var tl = document.createElement('span');
+        tl.textContent = 'Grösse je Teil:';
+        var ti = document.createElement('input');
+        ti.type = 'number';
+        ti.min = '100';
+        ti.max = '8000';
+        ti.step = '100';
+        ti.value = String(bauWahl.teilMB);
+        var te = document.createElement('span');
+        te.textContent = 'MB';
+        ti.addEventListener('change', function () {
+          var n = Number(ti.value);
+          bauWahl.teilMB = (n >= 100 && n <= 8000) ? n : 1500;
+          ti.value = String(bauWahl.teilMB);
+          vorschauZeigen();
+        });
+        teil.appendChild(tl); teil.appendChild(ti); teil.appendChild(te);
+        box.appendChild(teil);
+        elNachErgebnis.appendChild(box);
+
+        var liste = document.createElement('ul');
+        liste.className = 'paketliste';
+        elNachErgebnis.appendChild(liste);
+
+        var summe = document.createElement('p');
+        summe.className = 'bausumme';
+        elNachErgebnis.appendChild(summe);
+
+        var los = document.createElement('button');
+        los.className = 'btn primary';
+        los.textContent = '📦 Jetzt bauen';
+        los.addEventListener('click', function () {
+          if (!confirm('Pakete jetzt bauen?\n\n' +
+            'Braucht kurzzeitig noch einmal so viel Plattenplatz wie die ' +
+            'ausgewählten Dateien und dauert je nach Menge einige Minuten.')) return;
+          elNachErgebnis.textContent = '';
+          nachStatus('Pakete werden gebaut …');
+          api('/api/mod/downloads', bauWahl).then(function () { pruefeDownloads(); })
+            .catch(function () { nachStatus('Start fehlgeschlagen.', 'err'); });
+        });
+        elNachErgebnis.appendChild(los);
+
+        function zeichneListe(vor) {
+          var gewaehltePakete = vor.pakete.filter(function (p) {
+            if (p.art === 'klein') return bauWahl.klein;
+            if (p.art === 'foto') return bauWahl.fotos;
+            if (p.art === 'video') return bauWahl.videos;
+            if (p.art === 'kategorie') return bauWahl.kategorien;
+            return true;
+          });
+          liste.textContent = '';
+          gewaehltePakete.forEach(function (p) {
+            var li = document.createElement('li');
+            var t = document.createElement('span');
+            t.className = 'titel';
+            t.textContent = p.titel;
+            var m = document.createElement('span');
+            m.className = 'meta';
+            m.textContent = p.anzahl + ' Dateien · ' + mb(p.bytes);
+            li.appendChild(t);
+            li.appendChild(m);
+            liste.appendChild(li);
+          });
+          var gesamt = gewaehltePakete.reduce(function (n, p) { return n + p.bytes; }, 0);
+          summe.textContent = gewaehltePakete.length + ' Pakete, zusammen ' +
+            mb(gesamt) + ' – so viel Plattenplatz wird zusätzlich gebraucht.';
+        }
+
+        zeichneListe(v);
+        nachStatus('Vorschau: so würden die Pakete aussehen.');
+      })
+      .catch(function () { nachStatus('Vorschau fehlgeschlagen.', 'err'); });
+  }
+
+  document.getElementById('btnDownloads').addEventListener('click', vorschauZeigen);
 
   /* Grosse Originale nachreichen.
    *
@@ -924,6 +1093,24 @@
     label.appendChild(eingabe);
     li.appendChild(label);
 
+    // Manche Aufnahmen bekommen nie ein Original – ohne diesen Knopf
+    // stünden sie für immer auf der Liste.
+    var keins = document.createElement('button');
+    keins.className = 'btn';
+    keins.type = 'button';
+    keins.textContent = '✕ keins';
+    keins.title = 'Kein Original vorhanden oder gewünscht – von der Liste nehmen';
+    keins.addEventListener('click', function () {
+      keins.disabled = true;
+      api('/api/mod/kein-original', { id: p.id, skip: true }).then(function () {
+        stand.className = 'fertig';
+        stand.textContent = '– kein Original';
+        label.remove();
+        keins.remove();
+      }).catch(function () { keins.disabled = false; });
+    });
+    li.appendChild(keins);
+
     eingabe.addEventListener('change', function () {
       var datei = eingabe.files && eingabe.files[0];
       if (!datei) return;
@@ -964,8 +1151,10 @@
         }
         var videos = liste.filter(function (p) { return p.kind !== 'photo'; }).length;
         nachStatus(liste.length + ' Beiträge ohne Original, davon ' + videos +
-          ' Videos. Datei auswählen – sie geht in Stücken hoch, die Grösse ' +
-          'spielt keine Rolle.');
+          ' Videos' +
+          (d.uebersprungen ? ' · ' + d.uebersprungen + ' als „kein Original" abgehakt' : '') +
+          '. Datei auswählen – sie geht in Stücken hoch, die Grösse spielt ' +
+          'keine Rolle.');
 
         var ul = document.createElement('ul');
         ul.className = 'fehlliste';

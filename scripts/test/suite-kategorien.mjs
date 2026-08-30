@@ -178,6 +178,7 @@ export default async function run({ base, key, ok }) {
 
   await gaesteStueckweise({ base, ok });
   await galerieDetails({ base, key, ok });
+  await allesKnopf({ base, key, ok });
 }
 
 /* Der Gaeste-Weg fuer grosse Originale und seine Grenzen. */
@@ -334,4 +335,28 @@ export async function galerieDetails({ base, key, ok }) {
     html.includes('grussTitel') && html.includes('lbpfeil'));
   ok('Vollbild hat einen beschrifteten Download-Knopf',
     html.includes('lbDownload') && html.includes('lbGroesse'));
+}
+
+/* Der Alles-Knopf und die Handy-Version in der Galerie. */
+export async function allesKnopf({ base, key, ok }) {
+  await modFetch(base, key, '/api/mod/gallery', { open: true });
+
+  // Ohne fertige Pakete muss der Knopf trotzdem funktionieren.
+  const html = await (await fetch(base + '/galerie')).text();
+  ok('Galerie hat den Alles-Knopf',
+    html.includes('btnAlles') && html.includes('allesMeta'));
+
+  const alles = await fetch(base + '/api/gallery/zip');
+  ok('Alles-ZIP wird ausgeliefert', alles.status === 200);
+  const roh = Buffer.from(await alles.arrayBuffer());
+  ok('Es ist ein gültiges ZIP', roh[0] === 0x50 && roh[1] === 0x4b);
+
+  // Die Handy-Version steht im Feed, damit die Galerie sie wählen kann.
+  const feed = await (await fetch(base + '/api/feed')).json();
+  ok('Feed nennt die Handy-Version', feed.photos.every(
+    (p) => typeof p.mobilBytes === 'number'));
+  ok('Feed nennt „kein Original"', feed.photos.every(
+    (p) => typeof p.ohneOriginal === 'boolean'));
+
+  await modFetch(base, key, '/api/mod/gallery', { open: false });
 }

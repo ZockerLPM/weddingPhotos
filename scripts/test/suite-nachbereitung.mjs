@@ -203,6 +203,7 @@ export default async function run({ base, key, ok, dataDir }) {
   await nachreichen({ base, key, ok, dataDir });
   await sichten({ base, key, ok });
   await verlauf({ base, key, ok });
+  await feinschliff({ base, key, ok });
 }
 
 /* Grosse Originale nachreichen.
@@ -407,4 +408,93 @@ export async function verlauf({ base, key, ok }) {
   const gross = await (await fetch(base + '/api/mod/verlauf?limit=99999',
     { headers: { 'x-mod-key': key } })).json();
   ok('Die Menge ist begrenzt', gross.zeilen.length <= 1000);
+}
+
+/* Handy-Versionen, „kein Original" und die Paket-Vorschau. */
+export async function feinschliff({ base, key, ok }) {
+  const modGet4 = (pfad) =>
+    fetch(base + pfad, { headers: { 'x-mod-key': key } }).then((r) => r.json());
+
+  // --- „Kein Original vorhanden/gewünscht"
+  const p = await uploadPhoto(base, { who: 'Ohnedatei', kind: 'video' });
+  await wait(150);
+
+  let liste = await modGet4('/api/mod/fehlende-originale');
+  ok('Der Eintrag steht auf der Nachreichliste',
+    liste.eintraege.some((e) => e.id === p.body.id));
+  ok('Die Liste meldet die abgehakten mit',
+    typeof liste.uebersprungen === 'number');
+
+  const abgehakt = await (await modFetch(base, key, '/api/mod/kein-original',
+    { id: p.body.id, skip: true })).json();
+  ok('„Kein Original" lässt sich setzen', abgehakt.photo.ohneOriginal === true);
+
+  liste = await modGet4('/api/mod/fehlende-originale');
+  ok('Danach verschwindet er von der Liste',
+    !liste.eintraege.some((e) => e.id === p.body.id));
+  ok('Und wird als abgehakt gezählt', liste.uebersprungen >= 1);
+
+  const zurueck = await (await modFetch(base, key, '/api/mod/kein-original',
+    { id: p.body.id, skip: false })).json();
+  ok('Es lässt sich zurücknehmen', zurueck.photo.ohneOriginal === false);
+  liste = await modGet4('/api/mod/fehlende-originale');
+  ok('Dann steht er wieder auf der Liste',
+    liste.eintraege.some((e) => e.id === p.body.id));
+
+  ok('Unbekannte ID wird abgewiesen',
+    (await modFetch(base, key, '/api/mod/kein-original',
+      { id: '01ZZZZZZZZZZZZZZZZZZZZZZZZ' })).status === 404);
+  ok('Braucht den Schlüssel',
+    (await fetch(base + '/api/mod/kein-original', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: p.body.id }),
+    })).status === 401);
+
+  // --- Handy-Versionen (ffmpeg ist im Testumfeld meist nicht da)
+  const handy = await modGet4('/api/mod/handyversionen');
+  ok('Handy-Versionen melden ihren Stand',
+    typeof handy.moeglich === 'boolean' && typeof handy.offen === 'number',
+    JSON.stringify(handy));
+  const start = await (await modFetch(base, key, '/api/mod/handyversionen', {})).json();
+  ok('Ohne ffmpeg wird sauber abgelehnt statt abzustürzen',
+    start.moeglich === true || (start.moeglich === false && !!start.fehler),
+    JSON.stringify(start));
+  ok('Handy-Versionen brauchen den Schlüssel',
+    (await fetch(base + '/api/mod/handyversionen')).status === 401);
+
+  // --- Vorschau der Pakete
+  const v = await modGet4('/api/mod/downloads/vorschau');
+  ok('Vorschau liefert Pakete', Array.isArray(v.pakete) && v.pakete.length > 0,
+    'n=' + (v.pakete || []).length);
+  ok('Mit Anzahl und Grösse',
+    v.pakete.every((x) => x.anzahl > 0 && typeof x.bytes === 'number'));
+  ok('Und einer Gesamtsumme',
+    typeof v.gesamt === 'number' && typeof v.dateien === 'number');
+  ok('Ohne dass etwas gebaut wurde',
+    (await modGet4('/api/mod/downloads')).laeuft === false);
+
+  // Die Teilgrösse wirkt sich aus.
+  const klein = await modGet4('/api/mod/downloads/vorschau?teilMB=100');
+  const gross = await modGet4('/api/mod/downloads/vorschau?teilMB=8000');
+  ok('Kleinere Teile ergeben mehr Pakete',
+    klein.pakete.length >= gross.pakete.length,
+    klein.pakete.length + ' vs ' + gross.pakete.length);
+
+  // --- Auswahl beim Bau wird beachtet
+  const nurKlein = await (await modFetch(base, key, '/api/mod/downloads',
+    { klein: true, fotos: false, videos: false, kategorien: false })).json();
+  ok('Bau mit Auswahl startet', nurKlein.laeuft === true || !!nurKlein.pakete);
+  let bau = null;
+  for (let i = 0; i < 60; i++) {
+    bau = await modGet4('/api/mod/downloads');
+    if (!bau.laeuft) break;
+    await wait(250);
+  }
+  const gebaut = (bau.pakete && bau.pakete.pakete) || [];
+  ok('Es entsteht nur die kleine Version',
+    gebaut.length > 0 && gebaut.every((x) => x.art === 'klein'),
+    gebaut.map((x) => x.art).join(', '));
+
+  ok('Vorschau braucht den Schlüssel',
+    (await fetch(base + '/api/mod/downloads/vorschau')).status === 401);
 }

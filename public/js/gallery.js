@@ -86,6 +86,26 @@
     return p.hasOriginal ? '/i/' + p.id + '-o.' + p.ext : '/i/' + p.id + '-d.jpg';
   }
 
+  /* Fürs Sichern aufs Handy zählt eine andere Datei.
+   *
+   * Wo eine Handy-Version des Videos vorliegt, ist sie die richtige Wahl:
+   * kleiner gerechnet, damit das Telefon sie in einem Zug in die Fotos-App
+   * übernehmen kann. Das Original bleibt für ZIP und Rechner.
+   */
+  function sicherUrl(p) {
+    if (p.mobilBytes) return '/i/' + p.id + '-m.mp4';
+    return dateiUrl(p);
+  }
+
+  function sicherBytes(p) {
+    return p.mobilBytes || p.bytes || 0;
+  }
+
+  function sicherName(p) {
+    if (!p.mobilBytes) return dateiName(p);
+    return dateiName(p).replace(/\.[a-z0-9]+$/i, '.mp4');
+  }
+
   function dateiName(p) {
     var datum = new Date(p.effectiveAt || p.uploadedAt).toISOString().slice(0, 10);
     var wer = (p.uploader || 'gast').replace(/[^\w\-]/g, '_');
@@ -347,15 +367,17 @@
     // Bei grossen Dateien gleich auf den nativen Weg hinweisen, statt den
     // Gast erst in eine Absage laufen zu lassen.
     var tipp = el('lbTipp');
-    if (p.bytes > SHARE_MAX_EINZELN) {
-      tipp.textContent = istIOS
-        ? (p.kind === 'photo'
-            ? 'Grosses Bild – gedrückt halten und „Zu Fotos hinzufügen" wählen.'
-            : 'Grosses Video – „In Fotos sichern" zeigt den passenden Weg.')
-        : 'Grosse Datei – wird beim Sichern heruntergeladen.';
+    if (istIOS && p.kind === 'photo') {
+      // Der schnellste Weg auf dem iPhone, und er kennt keine Grössengrenze.
+      tipp.textContent = 'Am schnellsten: Bild gedrückt halten → ' +
+        '„Zu Fotos hinzufügen".';
       tipp.classList.remove('hidden');
-    } else if (istIOS && p.kind === 'photo') {
-      tipp.textContent = 'Tipp: Bild gedrückt halten → „Zu Fotos hinzufügen".';
+    } else if (p.mobilBytes) {
+      tipp.textContent = 'Sichern nimmt die handytaugliche Fassung (' +
+        groesse(p.mobilBytes) + '). Das Original steckt im ZIP.';
+      tipp.classList.remove('hidden');
+    } else if (sicherBytes(p) > SHARE_MAX_EINZELN) {
+      tipp.textContent = 'Grosse Datei – „Sichern" zeigt den passenden Weg.';
       tipp.classList.remove('hidden');
     } else {
       tipp.classList.add('hidden');
@@ -444,7 +466,7 @@
     liste.forEach(function (p, i) {
       setTimeout(function () {
         var a = document.createElement('a');
-        a.href = dateiUrl(p);
+        a.href = dateiUrl(p);          // hier immer das Original
         a.download = dateiName(p);
         document.body.appendChild(a);
         a.click();
@@ -459,9 +481,9 @@
    * Ungewissen. Über den Lesestrom lässt sich sagen, wie weit es ist.
    */
   function holeMitFortschritt(p, melde) {
-    return fetch(dateiUrl(p)).then(function (r) {
+    return fetch(sicherUrl(p)).then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      var gesamt = Number(r.headers.get('content-length')) || p.bytes || 0;
+      var gesamt = Number(r.headers.get('content-length')) || sicherBytes(p) || 0;
       if (!r.body || !r.body.getReader) return r.blob();
 
       var leser = r.body.getReader();
@@ -506,7 +528,7 @@
     var summe = 0;
     var zuGross = null;
     liste.forEach(function (p) {
-      var b = p.bytes || 0;
+      var b = sicherBytes(p);
       summe += b;
       if (b > SHARE_MAX_EINZELN && !zuGross) zuGross = p;
     });
@@ -535,7 +557,7 @@
           toast('Wird vorbereitet … ' + Math.round(gesamtAnteil * 100) + ' %', 60000);
         }).then(function (b) {
           fertig++;
-          return new File([b], dateiName(p), { type: b.type || 'application/octet-stream' });
+          return new File([b], sicherName(p), { type: b.type || 'application/octet-stream' });
         });
       };
     });
@@ -584,17 +606,20 @@
     var titel = istVideo ? 'Video sichern' : 'Bild sichern';
     var schritte;
 
-    if (istIOS && istVideo) {
+    if (istIOS && !istVideo) {
+      // Bilder gehen auf iOS immer direkt – egal wie gross. Das Bild ist
+      // schon zu sehen, es braucht keinen Umweg.
       schritte = [
-        'Auf „Öffnen" tippen – das Video startet.',
-        'Unten links das Teilen-Symbol antippen.',
-        '„Video sichern" wählen.',
+        'Das Blatt schliessen – das Bild ist schon offen.',
+        'Mit dem Finger auf das Bild drücken und halten.',
+        '„Zu Fotos hinzufügen" wählen.',
       ];
     } else if (istIOS) {
       schritte = [
-        'Auf „Öffnen" tippen – das Bild erscheint gross.',
-        'Das Bild gedrückt halten.',
-        '„Zu Fotos hinzufügen" wählen.',
+        'Auf „Öffnen" tippen – das Video wird geladen.',
+        'Oben rechts auf das Teilen-Symbol tippen.',
+        '„In Dateien sichern" wählen, dann in der Dateien-App ' +
+          'das Video antippen und dort „Sichern" wählen.',
       ];
     } else {
       schritte = [
@@ -604,10 +629,11 @@
       ];
     }
 
-    el('hilfeTitel').textContent = titel + ' (' + groesse(p.bytes) + ')';
-    el('hilfeText').textContent =
-      'Für so grosse Dateien gibt es einen eigenen Weg – ' +
-      'er funktioniert unabhängig von der Grösse:';
+    el('hilfeTitel').textContent = titel + ' (' + groesse(sicherBytes(p)) + ')';
+    el('hilfeText').textContent = (istIOS && !istVideo)
+      ? 'Bilder lassen sich auf dem iPhone direkt sichern – ganz ohne Umweg:'
+      : 'Für so grosse Dateien gibt es einen eigenen Weg – ' +
+        'er funktioniert unabhängig von der Grösse:';
 
     var ol = el('hilfeSchritte');
     ol.textContent = '';
@@ -743,6 +769,34 @@
       .then(function (r) { return r.json(); })
       .then(function (d) {
         liste.textContent = '';
+
+        /* Ein Knopf für alle, die einfach alles wollen.
+         *
+         * Liegen fertige Pakete bereit, führt er auf das grösste – bei
+         * mehreren Teilen bleibt die Liste darunter der Weg. Ohne fertige
+         * Pakete wird im Fluge gepackt; das ist für den Rechner völlig
+         * in Ordnung.
+         */
+        var pakete = d.pakete || [];
+        var voll = pakete.filter(function (p) {
+          return p.art === 'foto' || p.art === 'video';
+        });
+        var knopf = el('btnAlles');
+        if (voll.length === 1) {
+          knopf.href = '/d/' + voll[0].datei;
+          el('allesMeta').textContent = voll[0].anzahl + ' Dateien · ' +
+            groesse(voll[0].bytes) + ' – fortsetzbar';
+        } else if (voll.length > 1) {
+          var summe = voll.reduce(function (n, p) { return n + p.bytes; }, 0);
+          var anzahl = voll.reduce(function (n, p) { return n + p.anzahl; }, 0);
+          knopf.href = '/d/' + voll[0].datei;
+          el('allesMeta').textContent = anzahl + ' Dateien · ' + groesse(summe) +
+            ' in ' + voll.length + ' Teilen – hier Teil 1, der Rest unten';
+        } else {
+          knopf.href = '/api/gallery/zip';
+          el('allesMeta').textContent =
+            'als ZIP – alle Fotos und Videos in Originalgrösse';
+        }
         (d.pakete || []).forEach(function (p) {
           liste.appendChild(paketZeile(p.titel, p.hinweis,
             p.anzahl + ' Dateien · ' + groesse(p.bytes), '/d/' + p.datei));

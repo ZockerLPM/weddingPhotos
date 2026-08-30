@@ -11,6 +11,7 @@ import * as db from './db.js';
 import * as sse from './sse.js';
 import { DEFAULT_CHALLENGES, sanitizeChallenges } from './challenges.js';
 import * as nach from './nachbereitung.js';
+import * as videos from './videos.js';
 import { DEFAULT_KATEGORIEN, sanitizeKategorien } from './kategorien.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -84,6 +85,8 @@ function rowToPublic(r) {
     hasOriginal: !!r.has_original,
     ext: r.ext_original || null,
     bytes: r.original_bytes || 0,
+    mobilBytes: r.mobile_bytes || 0,
+    ohneOriginal: !!r.original_skip,
   };
 }
 
@@ -723,7 +726,26 @@ app.get('/api/mod/verlauf', modAuth, (req, res) => {
 });
 
 app.get('/api/mod/fehlende-originale', modAuth, (req, res) => {
-  res.json({ eintraege: db.ohneOriginal().map(rowToPublic) });
+  res.json({
+    eintraege: db.ohneOriginal().map(rowToPublic),
+    uebersprungen: db.uebersprungen(),
+  });
+});
+
+/* „Kein Original vorhanden oder gewünscht."
+ *
+ * Manche Aufnahmen bekommen nie ein Original – das Video ist verloren, der
+ * Gast hat es nicht mehr, oder es lohnt schlicht nicht. Ohne diesen Weg
+ * stünden sie für immer auf der Nachreichliste und man wüsste nie, ob man
+ * fertig ist.
+ */
+app.post('/api/mod/kein-original', modAuth, (req, res) => {
+  const id = str(req.body.id, 26);
+  if (!db.byId(id)) return res.status(404).json({ error: 'unbekannt' });
+  db.setOriginalSkip(id, req.body.skip !== false);
+  const photo = rowToPublic(db.byId(id));
+  sse.emit('update', photo);
+  res.json({ ok: true, photo, offen: db.ohneOriginal().length });
 });
 
 /* ---- Weg für die Moderation ----
@@ -806,12 +828,38 @@ app.get('/api/mod/duplikate', modAuth, (req, res) => {
   res.json({ ...nach.hashStatus(), gruppen: nach.duplikate() });
 });
 
+app.get('/api/mod/handyversionen', modAuth, async (req, res) => {
+  res.json({
+    ...videos.status(),
+    offen: videos.offeneAnzahl(),
+    moeglich: await videos.ffmpegVorhanden(),
+  });
+});
+
+app.post('/api/mod/handyversionen', modAuth, async (req, res) => {
+  res.json(await videos.erzeugen());
+});
+
 app.post('/api/mod/downloads', modAuth, async (req, res) => {
-  res.json(await nach.downloadsBauen());
+  res.json(await nach.downloadsBauen({
+    klein: req.body.klein !== false,
+    fotos: req.body.fotos !== false,
+    videos: req.body.videos !== false,
+    kategorien: req.body.kategorien !== false,
+    teilMB: intOr(req.body.teilMB, 0),
+  }));
 });
 
 app.get('/api/mod/downloads', modAuth, (req, res) => {
   res.json(nach.bauStatus());
+});
+
+// Was würde entstehen? Zeigt die Pakete mit Anzahl und Grösse, ohne
+// etwas zu bauen – damit man vorher weiss, worauf man sich einlässt.
+app.get('/api/mod/downloads/vorschau', modAuth, (req, res) => {
+  res.json(nach.vorschau({
+    teilMB: intOr(req.query.teilMB, 0),
+  }));
 });
 
 // Endgültiges Löschen. Absichtlich mit Bestätigungswort, damit es nicht

@@ -229,7 +229,28 @@ in „Zuletzt", auf Android im Ordner der Downloads bzw. der Galerie. Wer die
 Fotos gebündelt in einem Ordner haben will, lädt ein ZIP-Paket und entpackt
 es; daraus wird auf Android ein eigenes Album.
 
-**Für grosse Dateien gibt es den nativen Weg.** Die Web-Share-Schnittstelle
+**Videos bekommen eine Handy-Version.** Auf iOS führt der einzige Weg in die
+Fotos-App über die Web-Share-Schnittstelle, und die verlangt die Datei
+komplett im Speicher – bei 300 MB bricht das Telefon ab. Safaris eigenes
+Teilen-Menü hilft nicht: Es bietet bei Videos nur „In Dateien sichern".
+
+Also muss die Datei kleiner werden. In der Moderation erzeugt
+**📱 Handy-Versionen** aus jedem grösseren Video eine zweite Fassung
+(H.264, höchstens 1080p) – gut genug für die Fotos-App und klein genug fürs
+Sichern in einem Zug. Das Original bleibt unangetastet und steckt weiter in
+den ZIP-Paketen; die Galerie nimmt beim Sichern automatisch die kleinere
+Fassung.
+
+Nebeneffekt: Ein HEVC-Video vom iPhone spielt in Chrome oft gar nicht –
+die Handy-Version tut es überall. Dafür braucht das Image **ffmpeg**
+(steckt im Dockerfile); fehlt es, bleibt nur diese Funktion aus.
+Schwellen über `MOBIL_AB_MB` (Standard 40), `MOBIL_HOEHE` (1080) und
+`MOBIL_CRF` (26).
+
+**Bilder gehen auf iOS immer direkt** – gedrückt halten, „Zu Fotos
+hinzufügen", ohne Grössengrenze. Darauf weist die Vollbildansicht hin.
+
+**Für den Rest gibt es den nativen Weg.** Die Web-Share-Schnittstelle
 braucht die Datei komplett im Speicher – daran scheitert ein 300-MB-Video
 auf dem Handy. Der eingebaute Weg des Geräts kennt diese Grenze **nicht**:
 
@@ -270,6 +291,7 @@ heruntergeladen.
 
 | Weg | Wofür |
 |---|---|
+| **📦 Alles herunterladen** | ein grosser Knopf ganz oben – für alle, die einfach alles wollen (Rechner, Sicherungskopie) |
 | **Fertige Pakete** unter ⬇️ Herunterladen | Alles, Fotos, Videos, je Kategorie – als vorbereitete Dateien, fortsetzbar |
 | **Nur von einer Person** | im Fluge erzeugt, klein genug |
 | **Auswahl als ZIP** | beliebige Zusammenstellung aus der Mehrfachauswahl |
@@ -334,7 +356,11 @@ Kachel blendet aus. Zwei Helfer beschleunigen das zusätzlich:
   Durchlauf liest alle Originale einmal und dauert Minuten, danach ist er
   sofort.
 
-**3. 🎬 Originale nachreichen.** Videos über dem Upload-Limit kamen am Fest
+**3. 📱 Handy-Versionen** (nur wenn es Videos gibt). Rechnet im Hintergrund
+kleinere Fassungen, damit sich Videos auf dem Telefon direkt in die Fotos-App
+sichern lassen. Die Originale bleiben unangetastet.
+
+**3b. 🎬 Originale nachreichen.** Videos über dem Upload-Limit kamen am Fest
 nur als Vorschaubild an. Der Knopf listet alle Beiträge ohne Original mit
 Vorschaubild, Name und Uhrzeit – Datei auswählen, fertig.
 
@@ -343,6 +369,11 @@ Rolle mehr: Weder Multer noch Caddy sehen je mehr als ein Stück, und ein
 Verbindungsabbruch kostet höchstens ein Stück statt der ganzen Datei. Ein
 vorhandenes Original wird ersetzt, eine alte Datei mit anderer Endung
 dabei entfernt.
+
+Manche Aufnahmen bekommen nie ein Original – das Video ist verloren oder es
+lohnt schlicht nicht. Dafür gibt es je Zeile **✕ keins**: Der Eintrag
+verschwindet von der Liste, ohne ausgeblendet zu werden. Ohne diesen Weg
+wüsste man nie, ob man fertig ist.
 
 **Von Hand geht es auch** – praktisch, wenn die Dateien schon auf dem Server
 liegen. Die passenden IDs nennt `check-data.cjs` unter „Ohne Original":
@@ -356,10 +387,17 @@ docker compose exec -T -e DATA_DIR=/data -e REPAIR=1 app node < scripts/check-da
 
 **4. Kategorien zuordnen** (siehe oben) – am schnellsten über Zeiträume.
 
-**5. 📦 Downloads vorbereiten.** Erzeugt fertige ZIP-Dateien auf der Platte.
-Erst bauen, wenn Aussortieren, Nachreichen und Zuordnen fertig sind – die Pakete
-enthalten genau das, was dann sichtbar ist. Braucht kurzzeitig noch einmal
-so viel Plattenplatz wie die Fotos.
+**5. 📦 Downloads vorbereiten.** Zeigt zuerst eine **Vorschau**: welche
+Pakete entstünden, mit Anzahl, Grösse und Gesamtsumme – dazu die Angabe, wie
+viel Plattenplatz zusätzlich gebraucht wird. Wählbar ist, was gebaut wird
+(kleine Version · Fotos · Videos · je Kategorie) und wie gross die Teile sein
+sollen. Erst der Knopf **📦 Jetzt bauen** legt los.
+
+Vorschau und Bau kommen aus derselben Beschreibung im Code – sonst zeigte die
+Vorschau etwas anderes, als hinterher entsteht.
+
+Erst bauen, wenn Aussortieren, Nachreichen und Zuordnen fertig sind – die
+Pakete enthalten genau das, was dann sichtbar ist.
 
 **6. Galerie öffnen.** Erst danach sehen die Gäste die Pakete.
 
@@ -462,7 +500,7 @@ npm test
 ```
 
 Startet für jede Suite einen eigenen Server mit temporärem Datenverzeichnis
-und prüft 252 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
+und prüft 277 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
 bekannten Metadaten), Grundfunktionen (Upload, Moderation, Galerie, ZIP,
 Fehlerfälle), die Upload-Warteschlange inklusive nachgebautem iOS-Verhalten,
 die Abendfunktionen, Altfoto-Erkennung und Aufgaben-Editor sowie die
@@ -471,7 +509,8 @@ Serien, Duplikate, Favoriten, Paketbau, fortsetzbare Downloads und
 endgültiges Löschen –, das stückweise Nachreichen grosser Originale sowie
 Kategorien, Auswahl-Downloads, die Sichtungs-Seite, den stückweisen Upload
 grosser Videos, Dateigrössen, Begrüssung und Altfoto-Filter der Galerie
-sowie den Verlauf. Vor jedem Deploy einmal laufen lassen.
+sowie den Verlauf sowie Handy-Versionen, „kein Original" und die Paket-Vorschau.
+Vor jedem Deploy einmal laufen lassen.
 
 ## Projektstruktur
 
@@ -481,6 +520,7 @@ server/           Node.js-Backend (Express, SQLite, SSE)
   challenges.js   Standard-Aufgaben und Prüfung der bearbeiteten Liste
   kategorien.js   Standard-Kategorien und Prüfung der bearbeiteten Liste
   nachbereitung.js Serien, Duplikate, Download-Pakete, endgültiges Löschen
+  videos.js       Handy-Versionen der Videos (ffmpeg)
   db.js           SQLite-Schema, Migrationen und Zugriffe (better-sqlite3, WAL)
   sse.js          Event-Verteiler mit Nachhol-Logik
   ulid.js         Zeitlich sortierbare Foto-IDs
@@ -749,7 +789,8 @@ anlegen, gesichertes `data/` nach `/opt/hochzeit/app/data/` kopieren,
 | Video wird nicht hochgeladen | Behoben. Bisher scheiterte der ganze Upload, wenn sich kein Standbild aus dem Video gewinnen liess. Jetzt gibt es einen Platzhalter, das Video geht in jedem Fall hoch |
 | Video zeigt eine schwarze Kachel mit 🎬 | Der Browser konnte kein Standbild gewinnen (oft HEVC vom iPhone in Chrome). Das Video selbst ist vollständig gespeichert |
 | Video kam nur als Vorschaubild an | Behoben: Originale gehen jetzt auch beim Gäste-Upload in 8-MB-Stücken hoch. Altbestand über **🧹 Nach der Feier → 🎬 Originale nachreichen** ergänzen |
-| Fehler beim Sichern grosser Videos in die Fotos-App | Behoben. Die Galerie prüft die Grösse jetzt vorher und lädt grosse Dateien herunter, statt sie erfolglos zu teilen |
+| Fehler beim Sichern grosser Videos in die Fotos-App | In der Moderation **📱 Handy-Versionen** erzeugen – danach nimmt die Galerie beim Sichern automatisch die kleinere Fassung |
+| `ffmpeg ist nicht installiert` | Image neu bauen: `docker compose up -d --build`. Ohne ffmpeg bleibt nur diese eine Funktion aus |
 | Video lässt sich in der Galerie nicht abspielen | `.mov` mit HEVC spielt Safari, Chrome oft nicht. Die Datei ist in Ordnung – über den Download-Knopf lokal öffnen |
 | `mkstemp ... Operation not permitted` beim Backup | Ziel liegt auf einem Windows-Laufwerk unter WSL. Aktuelles `backup-pull.sh` verwenden oder auf `backup-pull.ps1` wechseln |
 | Backup: `bash: syntax error near unexpected token '('` | Behoben. PowerShell entfernte beim Aufruf nativer Programme die inneren Anführungszeichen, dadurch kam `node -e eval(...)` ohne Quotes auf dem Server an. Das Skript schickt das Snippet jetzt über stdin an `node` |

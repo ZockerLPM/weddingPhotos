@@ -193,12 +193,13 @@ function paketSchreiben(datei, eintraege) {
 }
 
 // Nach Zielgrösse in Teile schneiden.
-function inTeile(eintraege) {
+function inTeile(eintraege, grenze) {
+  const max = grenze || TEIL_BYTES;
   const teile = [];
   let aktuell = [];
   let summe = 0;
   for (const e of eintraege) {
-    if (aktuell.length && summe + e.bytes > TEIL_BYTES) {
+    if (aktuell.length && summe + e.bytes > max) {
       teile.push(aktuell);
       aktuell = [];
       summe = 0;
@@ -210,38 +211,123 @@ function inTeile(eintraege) {
   return teile;
 }
 
-export async function downloadsBauen() {
-  if (bauLauf.laeuft) return bauStatus();
+const alsEintrag = (p) => ({
+  quelle: p.has_original ? dateiVon(p.id, 'o', p.ext_original) : dateiVon(p.id, 'd'),
+  name: zipName(p),
+  bytes: groesse(p.has_original ? dateiVon(p.id, 'o', p.ext_original) : dateiVon(p.id, 'd')),
+});
+
+/* Was soll gebaut werden?
+ *
+ * Bewusst eine einzige Beschreibung für Vorschau UND Bau – sonst zeigt die
+ * Vorschau etwas anderes, als hinterher entsteht.
+ *
+ * wahl: { klein, fotos, videos, kategorien } je true/false, teilMB als Zahl
+ */
+export function zusammenstellung(wahl) {
+  const w = Object.assign(
+    { klein: true, fotos: true, videos: true, kategorien: true, teilMB: 0 }, wahl || {});
+  const grenze = w.teilMB > 0 ? w.teilMB * 1024 * 1024 : TEIL_BYTES;
 
   const sichtbar = db.listVisible();
-  const fotos = sichtbar.filter((p) => p.kind === 'photo' && p.has_original);
-  const bewegt = sichtbar.filter(
-    (p) => (p.kind === 'video' || p.kind === 'message') && p.has_original);
+  const gruppen = [];
 
-  const alsEintrag = (p) => ({
-    quelle: p.has_original ? dateiVon(p.id, 'o', p.ext_original) : dateiVon(p.id, 'd'),
-    name: zipName(p),
-    bytes: groesse(p.has_original ? dateiVon(p.id, 'o', p.ext_original) : dateiVon(p.id, 'd')),
-  });
+  if (w.klein) {
+    const liste = sichtbar.map((p) => ({
+      quelle: dateiVon(p.id, 'd'),
+      name: `${new Date(p.effective_at || p.uploaded_at).toISOString().slice(0, 10)}` +
+            `_${(p.uploader || 'gast').replace(/[^\w\-äöüÄÖÜß]/g, '_')}_${p.id}.jpg`,
+      bytes: groesse(dateiVon(p.id, 'd')),
+    }));
+    if (liste.length) {
+      gruppen.push({
+        art: 'klein', basis: 'hochzeit-klein',
+        titel: 'Alle Fotos in Bildschirmgrösse',
+        hinweis: 'Zum Anschauen und Teilen – passt auf jedes Handy.',
+        teile: [liste],           // bewusst nicht schneiden, ist klein genug
+      });
+    }
+  }
 
-  const kleinListe = sichtbar.map((p) => ({
-    quelle: dateiVon(p.id, 'd'),
-    name: `${new Date(p.effective_at || p.uploaded_at).toISOString().slice(0, 10)}` +
-          `_${(p.uploader || 'gast').replace(/[^\w\-äöüÄÖÜß]/g, '_')}_${p.id}.jpg`,
-    bytes: groesse(dateiVon(p.id, 'd')),
-  }));
-  const fotoListe = fotos.map(alsEintrag);
-  const videoListe = bewegt.map(alsEintrag);
+  if (w.fotos) {
+    const liste = sichtbar
+      .filter((p) => p.kind === 'photo' && p.has_original).map(alsEintrag);
+    if (liste.length) {
+      gruppen.push({
+        art: 'foto', basis: 'hochzeit-fotos',
+        titel: 'Alle Fotos in Originalgrösse',
+        hinweis: 'Volle Auflösung, zum Drucken geeignet.',
+        teile: inTeile(liste, grenze),
+      });
+    }
+  }
 
-  const fotoTeile = inTeile(fotoListe);
-  const videoTeile = inTeile(videoListe);
+  if (w.videos) {
+    const liste = sichtbar
+      .filter((p) => (p.kind === 'video' || p.kind === 'message') && p.has_original)
+      .map(alsEintrag);
+    if (liste.length) {
+      gruppen.push({
+        art: 'video', basis: 'hochzeit-videos',
+        titel: 'Alle Videos',
+        hinweis: 'Videos und Botschaften aus der Erzählecke.',
+        teile: inTeile(liste, grenze),
+      });
+    }
+  }
+
+  if (w.kategorien) {
+    for (const k of kategorien()) {
+      const liste = sichtbar.filter((p) => p.category === k.id).map(alsEintrag);
+      if (!liste.length) continue;
+      gruppen.push({
+        art: 'kategorie', kategorie: k.id, basis: `hochzeit-${k.id}`,
+        titel: `${k.icon} ${k.name}`,
+        hinweis: 'Nur die Aufnahmen aus dieser Kategorie, in Originalgrösse.',
+        teile: inTeile(liste, grenze),
+      });
+    }
+  }
+
+  return { wahl: w, gruppen };
+}
+
+// Für die Anzeige: Pakete mit Namen, Anzahl und geschätzter Grösse.
+export function vorschau(wahl) {
+  const { gruppen } = zusammenstellung(wahl);
+  const pakete = [];
+  for (const g of gruppen) {
+    g.teile.forEach((teil, i) => {
+      pakete.push({
+        datei: g.teile.length === 1 ? `${g.basis}.zip` : `${g.basis}-${i + 1}.zip`,
+        art: g.art,
+        kategorie: g.kategorie || null,
+        titel: g.titel + (g.teile.length > 1
+          ? ` – Teil ${i + 1} von ${g.teile.length}` : ''),
+        hinweis: g.hinweis,
+        anzahl: teil.length,
+        bytes: teil.reduce((n, e) => n + e.bytes, 0),
+      });
+    });
+  }
+  return {
+    pakete,
+    gesamt: pakete.reduce((n, p) => n + p.bytes, 0),
+    dateien: pakete.reduce((n, p) => n + p.anzahl, 0),
+  };
+}
+
+export async function downloadsBauen(wahl) {
+  if (bauLauf.laeuft) return bauStatus();
+
+  const { gruppen } = zusammenstellung(wahl);
 
   bauLauf = {
     laeuft: true,
     schritt: 'wird vorbereitet',
     fertig: 0,
-    gesamt: kleinListe.length + fotoListe.length + videoListe.length +
-            sichtbar.filter((p) => p.category).length,
+    gesamt: gruppen.reduce(
+      (n, g) => n + g.teile.reduce((m, t) => m + t.length, 0), 0),
     fehler: null,
   };
 
@@ -253,66 +339,20 @@ export async function downloadsBauen() {
         await fsp.unlink(path.join(downloadDir, alt)).catch(() => {});
       }
 
+      // Aus derselben Zusammenstellung bauen, die auch die Vorschau zeigt.
       const pakete = [];
-
-      if (kleinListe.length) {
-        bauLauf.schritt = 'Kleine Version';
-        const datei = 'hochzeit-klein.zip';
-        const bytes = await paketSchreiben(path.join(downloadDir, datei), kleinListe);
-        pakete.push({
-          datei, bytes, anzahl: kleinListe.length, art: 'klein',
-          titel: 'Alle Fotos in Bildschirmgrösse',
-          hinweis: 'Zum Anschauen und Teilen – passt auf jedes Handy.',
-        });
-      }
-
-      for (let i = 0; i < fotoTeile.length; i++) {
-        bauLauf.schritt = `Fotos, Teil ${i + 1} von ${fotoTeile.length}`;
-        const datei = fotoTeile.length === 1
-          ? 'hochzeit-fotos.zip' : `hochzeit-fotos-${i + 1}.zip`;
-        const bytes = await paketSchreiben(path.join(downloadDir, datei), fotoTeile[i]);
-        pakete.push({
-          datei, bytes, anzahl: fotoTeile[i].length, art: 'foto',
-          titel: fotoTeile.length === 1
-            ? 'Alle Fotos in Originalgrösse'
-            : `Fotos in Originalgrösse – Teil ${i + 1} von ${fotoTeile.length}`,
-          hinweis: 'Volle Auflösung, zum Drucken geeignet.',
-        });
-      }
-
-      for (let i = 0; i < videoTeile.length; i++) {
-        bauLauf.schritt = `Videos, Teil ${i + 1} von ${videoTeile.length}`;
-        const datei = videoTeile.length === 1
-          ? 'hochzeit-videos.zip' : `hochzeit-videos-${i + 1}.zip`;
-        const bytes = await paketSchreiben(path.join(downloadDir, datei), videoTeile[i]);
-        pakete.push({
-          datei, bytes, anzahl: videoTeile[i].length, art: 'video',
-          titel: videoTeile.length === 1
-            ? 'Alle Videos'
-            : `Videos – Teil ${i + 1} von ${videoTeile.length}`,
-          hinweis: 'Videos und Botschaften aus der Erzählecke.',
-        });
-      }
-
-      // Ein Paket je Kategorie – der häufigste Wunsch ist „alles von der
-      // Trauung", nicht alles überhaupt.
-      for (const k of kategorien()) {
-        const drin = sichtbar.filter((p) => p.category === k.id);
-        if (!drin.length) continue;
-        const liste = drin.map(alsEintrag);
-        const teile = inTeile(liste);
-        for (let i = 0; i < teile.length; i++) {
-          bauLauf.schritt = k.name + (teile.length > 1 ? ` (Teil ${i + 1})` : '');
-          const datei = teile.length === 1
-            ? `hochzeit-${k.id}.zip`
-            : `hochzeit-${k.id}-${i + 1}.zip`;
-          const bytes = await paketSchreiben(path.join(downloadDir, datei), teile[i]);
+      for (const g of gruppen) {
+        for (let i = 0; i < g.teile.length; i++) {
+          const mehrteilig = g.teile.length > 1;
+          bauLauf.schritt = g.titel + (mehrteilig ? ` (Teil ${i + 1})` : ``);
+          const datei = mehrteilig ? `${g.basis}-${i + 1}.zip` : `${g.basis}.zip`;
+          const bytes = await paketSchreiben(path.join(downloadDir, datei), g.teile[i]);
           pakete.push({
-            datei, bytes, anzahl: teile[i].length, art: 'kategorie',
-            kategorie: k.id,
-            titel: `${k.icon} ${k.name}` +
-              (teile.length > 1 ? ` – Teil ${i + 1} von ${teile.length}` : ''),
-            hinweis: 'Nur die Aufnahmen aus dieser Kategorie, in Originalgrösse.',
+            datei, bytes, anzahl: g.teile[i].length,
+            art: g.art,
+            kategorie: g.kategorie || null,
+            titel: g.titel + (mehrteilig ? ` – Teil ${i + 1} von ${g.teile.length}` : ``),
+            hinweis: g.hinweis,
           });
         }
       }
