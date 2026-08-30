@@ -726,9 +726,14 @@ app.get('/api/mod/verlauf', modAuth, (req, res) => {
 });
 
 app.get('/api/mod/fehlende-originale', modAuth, (req, res) => {
+  // Mit ?alle=1 auch die als „kein Original" abgehakten – falls doch noch
+  // eine Datei auftaucht.
+  const alle = req.query.alle === '1';
+  const rows = alle ? db.ohneOriginalAlle() : db.ohneOriginal();
   res.json({
-    eintraege: db.ohneOriginal().map(rowToPublic),
+    eintraege: rows.map(rowToPublic),
     uebersprungen: db.uebersprungen(),
+    zeigtAlle: alle,
   });
 });
 
@@ -786,6 +791,84 @@ app.post('/api/mod/gruss', modAuth, (req, res) => {
   const gruss = getGruss();
   sse.emit('gruss', gruss);
   res.json({ ok: true, gruss });
+});
+
+/* Zeitpunkte korrigieren.
+ *
+ * Manche Aufnahmen tragen ein falsches Datum – etwa weil die Datei keine
+ * Metadaten hatte und das Dateidatum genommen wurde, oder weil ein
+ * nachträglich wiederhergestellter Eintrag das Datum seiner Datei erbte.
+ * Für die Reihenfolge zählt effective_at; genau das lässt sich hier
+ * geradeziehen. Das ursprüngliche taken_at bleibt unangetastet – es ist
+ * die Aufzeichnung dessen, was in der Datei stand.
+ */
+function tagSchluessel(ms) {
+  const d = new Date(ms);
+  return d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0');
+}
+
+app.get('/api/mod/datum', modAuth, (req, res) => {
+  const nachTag = new Map();
+  for (const p of db.tageUebersicht()) {
+    const t = tagSchluessel(p.effective_at || p.uploaded_at);
+    if (!nachTag.has(t)) nachTag.set(t, { tag: t, anzahl: 0, archive: 0, ids: [] });
+    const e = nachTag.get(t);
+    e.anzahl++;
+    if (p.archive) e.archive++;
+    if (e.ids.length < 2000) e.ids.push(p.id);
+  }
+  const tage = [...nachTag.values()].sort((a, b) => a.tag.localeCompare(b.tag));
+
+  // Der Tag mit den meisten Aufnahmen ist mit grosser Sicherheit der
+  // Hochzeitstag – als Vorschlag gut genug.
+  let haupttag = null;
+  for (const t of tage) if (!haupttag || t.anzahl > haupttag.anzahl) haupttag = t;
+
+  res.json({
+    tage: tage.map(({ tag, anzahl, archive }) => ({ tag, anzahl, archive })),
+    vorschlag: db.getSetting('hochzeitstag') || (haupttag ? haupttag.tag : null),
+    heute: tagSchluessel(Date.now()),
+  });
+});
+
+app.post('/api/mod/datum', modAuth, (req, res) => {
+  const ziel = str(req.body.tag, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ziel);
+  if (!m) return res.status(400).json({ error: 'Datum erwartet (JJJJ-MM-TT)' });
+
+  // Entweder eine Liste von IDs oder alle eines Quelltages.
+  let rows;
+  if (Array.isArray(req.body.ids) && req.body.ids.length) {
+    rows = req.body.ids.slice(0, 5000)
+      .map((v) => db.byId(str(v, 26))).filter(Boolean);
+  } else {
+    const quelle = str(req.body.vonTag, 10);
+    if (!quelle) return res.status(400).json({ error: 'Quelle fehlt' });
+    rows = db.tageUebersicht().filter(
+      (p) => tagSchluessel(p.effective_at || p.uploaded_at) === quelle);
+  }
+  if (!rows.length) return res.json({ ok: true, geaendert: 0 });
+
+  const behalteZeit = req.body.uhrzeitBehalten !== false;
+  const alsAbend = req.body.alsAbend === true;
+
+  let n = 0;
+  for (const p of rows) {
+    const alt = new Date(p.effective_at || p.uploaded_at);
+    const neu = new Date(
+      Number(m[1]), Number(m[2]) - 1, Number(m[3]),
+      behalteZeit ? alt.getHours() : 12,
+      behalteZeit ? alt.getMinutes() : 0,
+      behalteZeit ? alt.getSeconds() : 0);
+    db.setZeitpunkt(p.id, neu.getTime(), alsAbend ? 0 : p.archive);
+    sse.emit('update', rowToPublic(db.byId(p.id)));
+    n++;
+  }
+  db.setSetting('hochzeitstag', ziel);
+  console.log('[datum] %d Aufnahmen auf %s verschoben', n, ziel);
+  res.json({ ok: true, geaendert: n });
 });
 
 app.post('/api/mod/favorite', modAuth, (req, res) => {

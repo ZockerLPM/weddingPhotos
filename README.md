@@ -306,6 +306,12 @@ liefern.
 
 Persönliche Links: `/galerie?gast=Werner` und `/galerie?kategorie=trauung`.
 
+**Aus der Galerie in die Moderation.** Wer den Moderations-Schlüssel im
+Browser hat, sieht in der Vollbildansicht zusätzlich **✎ In der Moderation
+öffnen**. Das führt auf `/mod?foto=<ID>`, wo die Kachel angesprungen und
+hervorgehoben wird – ohne sie unter 871 anderen suchen zu müssen. Für alle
+anderen Gäste bleibt der Verweis unsichtbar.
+
 ## Nach der Feier
 
 In der Moderation unter **🧹 Nach der Feier**. Sinnvolle Reihenfolge:
@@ -375,6 +381,13 @@ lohnt schlicht nicht. Dafür gibt es je Zeile **✕ keins**: Der Eintrag
 verschwindet von der Liste, ohne ausgeblendet zu werden. Ohne diesen Weg
 wüsste man nie, ob man fertig ist.
 
+Taucht später doch eine Datei auf, holt **👁️ auch die abgehakten zeigen**
+sie zurück auf die Liste – dort lässt sich das Original ganz normal
+nachreichen oder die Entscheidung mit **↩ zurück** aufheben.
+
+In der Galerie tragen Videos **ohne** Original kein Filmsymbol mehr. Es gibt
+dort nur das Standbild zu sehen; ein Symbol verspräche etwas, das nicht kommt.
+
 **Von Hand geht es auch** – praktisch, wenn die Dateien schon auf dem Server
 liegen. Die passenden IDs nennt `check-data.cjs` unter „Ohne Original":
 
@@ -398,6 +411,19 @@ Vorschau etwas anderes, als hinterher entsteht.
 
 Erst bauen, wenn Aussortieren, Nachreichen und Zuordnen fertig sind – die
 Pakete enthalten genau das, was dann sichtbar ist.
+
+**5b. 📅 Datum korrigieren.** Aufnahmen ohne Metadaten erben das Dateidatum,
+wiederhergestellte Einträge das ihrer Datei – dann steht dort schnell „heute"
+statt des Hochzeitstags. Der Knopf zählt die Aufnahmen je Tag, hebt den
+Hochzeitstag hervor und schiebt jeden anderen Tag mit einem Klick dorthin.
+
+- **Uhrzeit bleibt erhalten** – ein Foto von 21:34 landet am Hochzeitstag um
+  21:34, nicht mitten in der Nacht.
+- Auf Wunsch verlieren die verschobenen Aufnahmen dabei das Kennzeichen
+  „von früher".
+- Verschoben wird `effective_at`, also das, wonach überall sortiert wird.
+  Das ursprüngliche `taken_at` bleibt als Aufzeichnung dessen stehen, was
+  in der Datei stand.
 
 **6. Galerie öffnen.** Erst danach sehen die Gäste die Pakete.
 
@@ -500,7 +526,7 @@ npm test
 ```
 
 Startet für jede Suite einen eigenen Server mit temporärem Datenverzeichnis
-und prüft 277 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
+und prüft 298 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
 bekannten Metadaten), Grundfunktionen (Upload, Moderation, Galerie, ZIP,
 Fehlerfälle), die Upload-Warteschlange inklusive nachgebautem iOS-Verhalten,
 die Abendfunktionen, Altfoto-Erkennung und Aufgaben-Editor sowie die
@@ -509,8 +535,8 @@ Serien, Duplikate, Favoriten, Paketbau, fortsetzbare Downloads und
 endgültiges Löschen –, das stückweise Nachreichen grosser Originale sowie
 Kategorien, Auswahl-Downloads, die Sichtungs-Seite, den stückweisen Upload
 grosser Videos, Dateigrössen, Begrüssung und Altfoto-Filter der Galerie
-sowie den Verlauf sowie Handy-Versionen, „kein Original" und die Paket-Vorschau.
-Vor jedem Deploy einmal laufen lassen.
+sowie den Verlauf, Handy-Versionen, „kein Original", die Paket-Vorschau sowie die
+Datumskorrektur. Vor jedem Deploy einmal laufen lassen.
 
 ## Projektstruktur
 
@@ -789,6 +815,7 @@ anlegen, gesichertes `data/` nach `/opt/hochzeit/app/data/` kopieren,
 | Video wird nicht hochgeladen | Behoben. Bisher scheiterte der ganze Upload, wenn sich kein Standbild aus dem Video gewinnen liess. Jetzt gibt es einen Platzhalter, das Video geht in jedem Fall hoch |
 | Video zeigt eine schwarze Kachel mit 🎬 | Der Browser konnte kein Standbild gewinnen (oft HEVC vom iPhone in Chrome). Das Video selbst ist vollständig gespeichert |
 | Video kam nur als Vorschaubild an | Behoben: Originale gehen jetzt auch beim Gäste-Upload in 8-MB-Stücken hoch. Altbestand über **🧹 Nach der Feier → 🎬 Originale nachreichen** ergänzen |
+| Aufnahmen tragen das Datum von heute | **📅 Datum korrigieren** in der Moderation – zählt die Tage und schiebt jeden falschen auf den Hochzeitstag, unter Beibehaltung der Uhrzeit |
 | Fehler beim Sichern grosser Videos in die Fotos-App | In der Moderation **📱 Handy-Versionen** erzeugen – danach nimmt die Galerie beim Sichern automatisch die kleinere Fassung |
 | `ffmpeg ist nicht installiert` | Image neu bauen: `docker compose up -d --build`. Ohne ffmpeg bleibt nur diese eine Funktion aus |
 | Video lässt sich in der Galerie nicht abspielen | `.mov` mit HEVC spielt Safari, Chrome oft nicht. Die Datei ist in Ordnung – über den Download-Knopf lokal öffnen |

@@ -153,6 +153,11 @@ const stmt = {
   setReviewed: db.prepare(`UPDATE photos SET reviewed = ? WHERE id = ?`),
   setOriginalSkip: db.prepare(`UPDATE photos SET original_skip = ? WHERE id = ?`),
   setMobile: db.prepare(`UPDATE photos SET mobile_bytes = ? WHERE id = ?`),
+  setZeitpunkt: db.prepare(
+    `UPDATE photos SET effective_at = ?, archive = ? WHERE id = ?`),
+  // Verteilung über die Tage – Grundlage für die Datumskorrektur.
+  tageUebersicht: db.prepare(
+    `SELECT * FROM photos WHERE hidden = 0 ORDER BY effective_at ASC`),
   // Videos, für die noch keine Handy-Version vorliegt.
   ohneMobil: db.prepare(
     `SELECT * FROM photos
@@ -187,6 +192,9 @@ const stmt = {
     `SELECT * FROM photos WHERE has_original = 0 AND hidden = 0
        AND original_skip = 0
      ORDER BY id DESC LIMIT 500`),
+  ohneOriginalAlle: db.prepare(
+    `SELECT * FROM photos WHERE has_original = 0 AND hidden = 0
+     ORDER BY id DESC LIMIT 800`),
   uebersprungen: db.prepare(
     `SELECT COUNT(*) AS n FROM photos
      WHERE has_original = 0 AND hidden = 0 AND original_skip = 1`),
@@ -253,6 +261,10 @@ export function setCategory(id, cat) { stmt.setCategory.run(cat || null, id); }
 export function setReviewed(id, v) { stmt.setReviewed.run(v ? 1 : 0, id); }
 export function setOriginalSkip(id, v) { stmt.setOriginalSkip.run(v ? 1 : 0, id); }
 export function setMobile(id, bytes) { stmt.setMobile.run(bytes || 0, id); }
+export function setZeitpunkt(id, ms, archive) {
+  stmt.setZeitpunkt.run(ms, archive ? 1 : 0, id);
+}
+export function tageUebersicht() { return stmt.tageUebersicht.all(); }
 export function ohneMobil() { return stmt.ohneMobil.all(); }
 export function uebersprungen() { return stmt.uebersprungen.get().n; }
 export function countOffen() { return stmt.countOffen.get().n; }
@@ -268,6 +280,7 @@ export function listNachGastUndZeit() { return stmt.listNachGastUndZeit.all(); }
 export function listFavoriten() { return stmt.listFavoriten.all(); }
 export function listVersteckt() { return stmt.listVersteckt.all(); }
 export function ohneOriginal() { return stmt.ohneOriginal.all(); }
+export function ohneOriginalAlle() { return stmt.ohneOriginalAlle.all(); }
 export function listRecent(limit = 300) { return stmt.listRecent.all(limit); }
 export function counts() { return stmt.counts.get(); }
 export function countHidden() { return stmt.countHidden.get().n; }

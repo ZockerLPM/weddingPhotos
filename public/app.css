@@ -330,6 +330,52 @@ body.auswahl-offen { padding-bottom: 120px; }
 .fehlliste .fertig { color: var(--ok); font-size: .82rem; }
 .fehlliste label.btn { flex: none; cursor: pointer; }
 
+/* Tagesübersicht der Datumskorrektur */
+.tagliste { list-style: none; margin: 10px 0 0; padding: 0; }
+
+.tagliste li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  background: var(--card2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.tagliste .tag { font-weight: 600; }
+.tagliste .anz { color: var(--muted); font-size: .85rem; }
+.tagliste .btn { margin-left: auto; padding: 7px 12px; font-size: .85rem; }
+.tagliste li.haupttag { border: 1px solid var(--accent); }
+.tagliste li.heute .tag { color: var(--warn); }
+
+/* Ein aus der Galerie angesprungenes Foto hervorheben */
+.grid .tile.gefunden {
+  outline: 3px solid var(--warn);
+  outline-offset: -3px;
+  animation: pochen 1.4s ease-in-out 3;
+}
+
+@keyframes pochen {
+  0%, 100% { outline-color: var(--warn); }
+  50% { outline-color: transparent; }
+}
+
+.sprungleiste {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  background: #3a3323;
+  color: var(--warn);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+
+.sprungleiste .btn { margin-left: auto; }
+
 /* Auswahl der Pakete vor dem Bau */
 .bauwahl {
   background: var(--card2);
@@ -355,6 +401,40 @@ body.auswahl-offen { padding-bottom: 120px; }
 }
 
 .bauwahl .zahl { color: var(--muted); font-size: .85rem; margin-left: auto; }
+
+/* Auch ausserhalb des Paket-Kastens verwendet (Datumskorrektur). */
+.teilzeile {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: .88rem;
+  color: var(--muted);
+}
+
+.teilzeile input {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #3a3f48;
+  background: var(--card2);
+  color: var(--text);
+  font-family: inherit;
+}
+
+.kastenzeile {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  padding: 8px 0;
+  font-size: .9rem;
+  cursor: pointer;
+}
+
+.kastenzeile input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+  flex: none;
+}
 
 .bauwahl .teilzeile {
   display: flex;
@@ -1061,6 +1141,18 @@ body.galerie .favhead { font-size: 1.05rem; }
   cursor: pointer;
   padding: 6px 10px;
 }
+
+/* Nur für die Verwaltung sichtbar – wer den Schlüssel im Browser hat. */
+.lbmod {
+  display: block;
+  text-align: center;
+  color: var(--muted);
+  font-size: .8rem;
+  margin-top: 8px;
+  text-decoration: none;
+}
+
+.lbmod:hover { color: var(--accent); }
 
 .lbtipp {
   text-align: center;

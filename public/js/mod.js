@@ -1077,6 +1077,7 @@
 
     var stand = document.createElement('div');
     stand.className = 'fortschritt';
+    if (p.ohneOriginal) stand.textContent = '– als „kein Original" abgehakt';
 
     rest.appendChild(wer);
     rest.appendChild(wann);
@@ -1100,13 +1101,19 @@
     keins.type = 'button';
     keins.textContent = '✕ keins';
     keins.title = 'Kein Original vorhanden oder gewünscht – von der Liste nehmen';
+    keins.textContent = p.ohneOriginal ? '↩ zurück' : '✕ keins';
+    keins.title = p.ohneOriginal
+      ? 'Doch wieder auf die Liste nehmen'
+      : 'Kein Original vorhanden oder gewünscht – von der Liste nehmen';
     keins.addEventListener('click', function () {
       keins.disabled = true;
-      api('/api/mod/kein-original', { id: p.id, skip: true }).then(function () {
-        stand.className = 'fertig';
-        stand.textContent = '– kein Original';
-        label.remove();
-        keins.remove();
+      var neu = !p.ohneOriginal;
+      api('/api/mod/kein-original', { id: p.id, skip: neu }).then(function () {
+        p.ohneOriginal = neu;
+        stand.className = neu ? 'fertig' : 'fortschritt';
+        stand.textContent = neu ? '– kein Original' : '';
+        keins.textContent = neu ? '↩ zurück' : '✕ keins';
+        keins.disabled = false;
       }).catch(function () { keins.disabled = false; });
     });
     li.appendChild(keins);
@@ -1138,10 +1145,13 @@
     return li;
   }
 
-  document.getElementById('btnFehlende').addEventListener('click', function () {
+  var zeigeAbgehakte = false;
+
+  function fehlendeLaden() {
     elNachErgebnis.textContent = '';
     nachStatus('Wird geladen …');
-    fetch('/api/mod/fehlende-originale', { headers: { 'x-mod-key': key } })
+    fetch('/api/mod/fehlende-originale' + (zeigeAbgehakte ? '?alle=1' : ''),
+      { headers: { 'x-mod-key': key } })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         var liste = d.eintraege || [];
@@ -1156,12 +1166,32 @@
           '. Datei auswählen – sie geht in Stücken hoch, die Grösse spielt ' +
           'keine Rolle.');
 
+        // Auch die abgehakten lassen sich holen – falls doch noch eine
+        // Datei auftaucht.
+        if (d.uebersprungen || zeigeAbgehakte) {
+          var um = document.createElement('button');
+          um.className = 'btn';
+          um.textContent = zeigeAbgehakte
+            ? '↩ nur offene zeigen'
+            : '👁️ auch die ' + d.uebersprungen + ' abgehakten zeigen';
+          um.addEventListener('click', function () {
+            zeigeAbgehakte = !zeigeAbgehakte;
+            fehlendeLaden();
+          });
+          elNachErgebnis.appendChild(um);
+        }
+
         var ul = document.createElement('ul');
         ul.className = 'fehlliste';
         liste.forEach(function (p) { ul.appendChild(fehlendeZeile(p)); });
         elNachErgebnis.appendChild(ul);
       })
       .catch(function () { nachStatus('Liste konnte nicht geladen werden.', 'err'); });
+  }
+
+  document.getElementById('btnFehlende').addEventListener('click', function () {
+    zeigeAbgehakte = false;
+    fehlendeLaden();
   });
 
   /* Verlauf des Abends.
@@ -1178,6 +1208,116 @@
     kategorien: 'Kategorien geändert',
     gruss: 'Begrüssung geändert',
   };
+
+  /* Datum korrigieren.
+   *
+   * Aufnahmen ohne Metadaten erben das Dateidatum, und wiederhergestellte
+   * Einträge das ihrer Datei – dann steht dort schnell „heute" statt des
+   * Hochzeitstags. Verschoben wird effective_at, also das, wonach überall
+   * sortiert wird; das ursprüngliche taken_at bleibt als Aufzeichnung
+   * dessen stehen, was in der Datei stand.
+   */
+  document.getElementById('btnDatum').addEventListener('click', function () {
+    elNachErgebnis.textContent = '';
+    nachStatus('Tage werden gezählt …');
+    fetch('/api/mod/datum', { headers: { 'x-mod-key': key } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var tage = d.tage || [];
+        if (!tage.length) { nachStatus('Nichts vorhanden.', 'ok'); return; }
+
+        nachStatus(tage.length === 1
+          ? 'Alle Aufnahmen liegen auf einem Tag – nichts zu tun.'
+          : tage.length + ' verschiedene Tage. Der Hochzeitstag ist ' +
+            'hervorgehoben; alles andere lässt sich dorthin schieben.');
+
+        var zeile = document.createElement('div');
+        zeile.className = 'teilzeile';
+        var lab = document.createElement('span');
+        lab.textContent = 'Hochzeitstag:';
+        var feld = document.createElement('input');
+        feld.type = 'date';
+        feld.value = d.vorschlag || '';
+        zeile.appendChild(lab);
+        zeile.appendChild(feld);
+        elNachErgebnis.appendChild(zeile);
+
+        var behalten = document.createElement('label');
+        behalten.className = 'kastenzeile';
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = true;
+        var cbt = document.createElement('span');
+        cbt.textContent = 'Uhrzeit beibehalten (empfohlen)';
+        behalten.appendChild(cb);
+        behalten.appendChild(cbt);
+        elNachErgebnis.appendChild(behalten);
+
+        var abend = document.createElement('label');
+        abend.className = 'kastenzeile';
+        var cb2 = document.createElement('input');
+        cb2.type = 'checkbox';
+        cb2.checked = true;
+        var cb2t = document.createElement('span');
+        cb2t.textContent = 'Dabei als Aufnahmen des Abends markieren (nicht „von früher")';
+        abend.appendChild(cb2);
+        abend.appendChild(cb2t);
+        elNachErgebnis.appendChild(abend);
+
+        var ul = document.createElement('ul');
+        ul.className = 'tagliste';
+        tage.forEach(function (t) {
+          var li = document.createElement('li');
+          if (t.tag === d.vorschlag) li.className = 'haupttag';
+          if (t.tag === d.heute) li.className += ' heute';
+
+          var tag = document.createElement('span');
+          tag.className = 'tag';
+          var dd = new Date(t.tag + 'T12:00:00');
+          tag.textContent = dd.toLocaleDateString('de-AT', {
+            weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric',
+          }) + (t.tag === d.heute ? ' (heute)' : '');
+
+          var anz = document.createElement('span');
+          anz.className = 'anz';
+          anz.textContent = t.anzahl + (t.anzahl === 1 ? ' Aufnahme' : ' Aufnahmen') +
+            (t.archive ? ' · ' + t.archive + '× „von früher"' : '');
+
+          li.appendChild(tag);
+          li.appendChild(anz);
+
+          if (t.tag !== d.vorschlag) {
+            var knopf = document.createElement('button');
+            knopf.className = 'btn';
+            knopf.textContent = '→ auf den Hochzeitstag';
+            knopf.addEventListener('click', function () {
+              var ziel = feld.value;
+              if (!ziel) { alert('Bitte zuerst den Hochzeitstag eintragen.'); return; }
+              if (!confirm(t.anzahl + ' Aufnahmen vom ' + tag.textContent +
+                ' auf den ' + ziel + ' verschieben?')) return;
+              knopf.disabled = true;
+              api('/api/mod/datum', {
+                vonTag: t.tag,
+                tag: ziel,
+                uhrzeitBehalten: cb.checked,
+                alsAbend: cb2.checked,
+              }).then(function (r) {
+                nachStatus(r.geaendert + ' Aufnahmen verschoben.', 'ok');
+                li.remove();
+                load();
+              }).catch(function () {
+                knopf.disabled = false;
+                nachStatus('Verschieben fehlgeschlagen.', 'err');
+              });
+            });
+            li.appendChild(knopf);
+          }
+          ul.appendChild(li);
+        });
+        elNachErgebnis.appendChild(ul);
+      })
+      .catch(function () { nachStatus('Abruf fehlgeschlagen.', 'err'); });
+  });
 
   document.getElementById('btnVerlauf').addEventListener('click', function () {
     elNachErgebnis.textContent = '';
@@ -1308,9 +1448,55 @@
       .catch(function () {});
   }
 
+  /* Sprung aus der Galerie: /mod?foto=<ID>
+   *
+   * Wer in der Galerie etwas entdeckt, das weg soll oder eine Kategorie
+   * braucht, kommt von dort direkt hierher – ohne die Kachel unter 871
+   * anderen suchen zu müssen.
+   */
+  function zuFotoSpringen() {
+    var params = new URLSearchParams(location.search);
+    var id = params.get('foto');
+    if (!id) return;
+
+    var p = photos.get(id);
+    var leiste = document.createElement('div');
+    leiste.className = 'sprungleiste';
+    var txt = document.createElement('span');
+
+    if (!p) {
+      txt.textContent = 'Die Aufnahme aus der Galerie wurde nicht gefunden.';
+    } else {
+      txt.textContent = '↓ Aus der Galerie: ' + p.uploader + ' · ' +
+        new Date(p.effectiveAt || p.uploadedAt).toLocaleString('de-AT', {
+          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+        });
+    }
+    leiste.appendChild(txt);
+
+    var zu = document.createElement('button');
+    zu.className = 'btn';
+    zu.textContent = '✕';
+    zu.addEventListener('click', function () {
+      leiste.remove();
+      history.replaceState(null, '', '/mod');
+    });
+    leiste.appendChild(zu);
+    elGrid.parentNode.insertBefore(leiste, elGrid);
+
+    if (!p) return;
+    var kachel = elGrid.querySelector('[data-id="' + id + '"]');
+    if (!kachel) return;
+    kachel.classList.add('gefunden');
+    kachel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
   ladeKategorien().then(function () {
     return load();
-  }).then(connectSSE).catch(function () {});
+  }).then(function () {
+    zuFotoSpringen();
+    connectSSE();
+  }).catch(function () {});
   pollHealth();
   setInterval(pollHealth, 60000);
 })();

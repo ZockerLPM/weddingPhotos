@@ -179,6 +179,7 @@ export default async function run({ base, key, ok }) {
   await gaesteStueckweise({ base, ok });
   await galerieDetails({ base, key, ok });
   await allesKnopf({ base, key, ok });
+  await galerieHinweise({ base, key, ok });
 }
 
 /* Der Gaeste-Weg fuer grosse Originale und seine Grenzen. */
@@ -357,6 +358,39 @@ export async function allesKnopf({ base, key, ok }) {
     (p) => typeof p.mobilBytes === 'number'));
   ok('Feed nennt „kein Original"', feed.photos.every(
     (p) => typeof p.ohneOriginal === 'boolean'));
+
+  await modFetch(base, key, '/api/mod/gallery', { open: false });
+}
+
+/* Videosymbol nur bei vorhandenem Video, Sprung in die Moderation. */
+export async function galerieHinweise({ base, key, ok }) {
+  await modFetch(base, key, '/api/mod/gallery', { open: true });
+
+  const ohne = await uploadPhoto(base, { who: 'Standbild', kind: 'video' });
+  const mit = await uploadPhoto(base, { who: 'Echtvideo', kind: 'video' });
+  const fo = new FormData();
+  fo.append('original', new Blob([Buffer.alloc(4096, 3)], { type: 'video/mp4' }), 'V.MP4');
+  await fetch(`${base}/api/original/${mit.body.id}`, { method: 'POST', body: fo });
+  await wait(200);
+
+  const feed = await (await fetch(base + '/api/feed')).json();
+  const a = feed.photos.find((p) => p.id === ohne.body.id);
+  const b = feed.photos.find((p) => p.id === mit.body.id);
+  ok('Video ohne Original ist als solches erkennbar',
+    a.kind === 'video' && a.hasOriginal === false);
+  ok('Video mit Original ebenso', b.hasOriginal === true);
+
+  const js = await (await fetch(base + '/js/gallery.js')).text();
+  ok('Das Filmsymbol hängt am vorhandenen Original',
+    js.includes("(p.kind === 'video' || p.kind === 'message') && p.hasOriginal"));
+
+  const html = await (await fetch(base + '/galerie')).text();
+  ok('Die Galerie hat den Verweis in die Moderation', html.includes('lbMod'));
+  ok('Der Verweis ist standardmässig verborgen',
+    /id="lbMod"[^>]*class="[^"]*hidden|class="lbmod hidden"/.test(html));
+
+  const modHtml = await (await fetch(base + '/mod')).text();
+  ok('Die Moderation hat die Datumskorrektur', modHtml.includes('btnDatum'));
 
   await modFetch(base, key, '/api/mod/gallery', { open: false });
 }

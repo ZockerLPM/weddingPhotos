@@ -191,7 +191,10 @@
     img.alt = 'Foto von ' + p.uploader;
     tile.appendChild(img);
 
-    if (p.kind === 'video' || p.kind === 'message') {
+    // Nur kennzeichnen, wenn tatsächlich etwas abzuspielen ist. Ohne
+    // Original gibt es bloss das Standbild – ein Filmsymbol verspräche
+    // dann etwas, das nicht kommt.
+    if ((p.kind === 'video' || p.kind === 'message') && p.hasOriginal) {
       var v = document.createElement('span');
       v.className = 'vid';
       v.textContent = p.kind === 'message' ? '🎙️' : '🎬';
@@ -355,12 +358,20 @@
     el('lbWho').textContent = teile.join(' · ');
 
     var chal = window.Challenges && Challenges.byId(p.challengeId);
-    el('lbCap').textContent = chal ? chal.icon + ' ' + chal.text : (p.caption || '');
+    var hinweis = (p.kind !== 'photo' && !p.hasOriginal)
+      ? 'Von dieser Aufnahme gibt es nur das Standbild.' : '';
+    el('lbCap').textContent =
+      (chal ? chal.icon + ' ' + chal.text : (p.caption || '')) ||
+      hinweis;
     el('lbPos').textContent = (i + 1) + ' / ' + gefiltert.length;
     el('lbDownload').href = dateiUrl(p);
     el('lbDownload').setAttribute('download', dateiName(p));
     // Grösse am Knopf – dann weiss man vorher, worauf man sich einlässt.
     el('lbGroesse').textContent = p.bytes ? groesse(p.bytes) : 'Laden';
+
+    var modLink = el('lbMod');
+    modLink.classList.toggle('hidden', !istVerwaltung);
+    if (istVerwaltung) modLink.href = '/mod?foto=' + encodeURIComponent(p.id);
     el('lbSichern').classList.toggle('hidden',
       !(navigator.canShare && navigator.share));
 
@@ -844,6 +855,10 @@
       });
     } catch (e) { /* ohne Live-Verbindung geht es auch */ }
   })();
+
+  // Wer den Moderations-Schlüssel im Browser hat, ist das Brautpaar –
+  // für alle anderen bleibt der Verweis unsichtbar.
+  var istVerwaltung = !!localStorage.getItem('modKey');
 
   var params = new URLSearchParams(location.search);
 

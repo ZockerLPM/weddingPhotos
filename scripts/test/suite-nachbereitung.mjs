@@ -204,6 +204,7 @@ export default async function run({ base, key, ok, dataDir }) {
   await sichten({ base, key, ok });
   await verlauf({ base, key, ok });
   await feinschliff({ base, key, ok });
+  await datumUndListe({ base, key, ok });
 }
 
 /* Grosse Originale nachreichen.
@@ -497,4 +498,96 @@ export async function feinschliff({ base, key, ok }) {
 
   ok('Vorschau braucht den Schlüssel',
     (await fetch(base + '/api/mod/downloads/vorschau')).status === 401);
+}
+
+/* Datumskorrektur und der Zugriff auf abgehakte Einträge. */
+export async function datumUndListe({ base, key, ok }) {
+  const modGet5 = (pfad) =>
+    fetch(base + pfad, { headers: { 'x-mod-key': key } }).then((r) => r.json());
+
+  // Drei Aufnahmen am „Hochzeitstag", eine irrtümlich von heute.
+  const tag = new Date();
+  tag.setDate(tag.getDate() - 14);
+  tag.setHours(20, 0, 0, 0);
+  const amTag = [];
+  for (let i = 0; i < 3; i++) {
+    amTag.push((await uploadPhoto(base, {
+      who: 'Datumstest', takenAt: tag.getTime() + i * 60000,
+    })).body.id);
+  }
+  // Ohne brauchbares Datum -> landet auf heute und gilt als Altfoto.
+  const falsch = (await uploadPhoto(base,
+    { who: 'Datumstest', takenAt: 0 })).body.id;
+  await wait(250);
+
+  const uebersicht = await modGet5('/api/mod/datum');
+  ok('Tagesübersicht wird geliefert',
+    Array.isArray(uebersicht.tage) && uebersicht.tage.length >= 1,
+    JSON.stringify((uebersicht.tage || []).map((t) => t.tag)));
+  ok('Sie nennt einen Vorschlag für den Hochzeitstag', !!uebersicht.vorschlag);
+  ok('Und den heutigen Tag', /^\d{4}-\d{2}-\d{2}$/.test(uebersicht.heute));
+
+  const zielTag = [
+    tag.getFullYear(),
+    String(tag.getMonth() + 1).padStart(2, '0'),
+    String(tag.getDate()).padStart(2, '0'),
+  ].join('-');
+
+  // Die eine falsche Aufnahme gezielt verschieben, Uhrzeit behalten.
+  let feed = await (await fetch(base + '/api/feed')).json();
+  const vorher = feed.photos.find((p) => p.id === falsch);
+  const alteStunde = new Date(vorher.effectiveAt).getHours();
+
+  const r = await (await modFetch(base, key, '/api/mod/datum', {
+    ids: [falsch], tag: zielTag, uhrzeitBehalten: true, alsAbend: true,
+  })).json();
+  ok('Verschieben meldet die Anzahl', r.geaendert === 1, JSON.stringify(r));
+
+  await wait(200);
+  feed = await (await fetch(base + '/api/feed')).json();
+  const nachher = feed.photos.find((p) => p.id === falsch);
+  const d = new Date(nachher.effectiveAt);
+  ok('Der Tag stimmt jetzt',
+    d.getFullYear() === tag.getFullYear() && d.getDate() === tag.getDate(),
+    d.toISOString());
+  ok('Die Uhrzeit blieb erhalten', d.getHours() === alteStunde,
+    d.getHours() + ' statt ' + alteStunde);
+  ok('Es gilt nicht mehr als Altfoto', nachher.archive === false);
+  ok('Das ursprüngliche Aufnahmedatum bleibt unangetastet',
+    nachher.takenAt === vorher.takenAt);
+
+  ok('Ungültiges Datum wird abgewiesen',
+    (await modFetch(base, key, '/api/mod/datum', { tag: 'Freitag' })).status === 400);
+  ok('Ohne Quelle wird abgewiesen',
+    (await modFetch(base, key, '/api/mod/datum', { tag: zielTag })).status === 400);
+  ok('Datumskorrektur braucht den Schlüssel',
+    (await fetch(base + '/api/mod/datum')).status === 401);
+
+  // --- Abgehakte Einträge bleiben erreichbar
+  const p = await uploadPhoto(base, { who: 'Abgehakt', kind: 'video' });
+  await wait(150);
+  await modFetch(base, key, '/api/mod/kein-original', { id: p.body.id, skip: true });
+
+  const nurOffen = await modGet5('/api/mod/fehlende-originale');
+  ok('Abgehakte fehlen in der normalen Liste',
+    !nurOffen.eintraege.some((e) => e.id === p.body.id));
+
+  const alle = await modGet5('/api/mod/fehlende-originale?alle=1');
+  ok('Mit ?alle=1 sind sie wieder dabei',
+    alle.eintraege.some((e) => e.id === p.body.id) && alle.zeigtAlle === true);
+  ok('Und sind als abgehakt gekennzeichnet',
+    alle.eintraege.find((e) => e.id === p.body.id)?.ohneOriginal === true);
+
+  // Ein Original lässt sich trotzdem nachreichen.
+  const start = await (await modFetch(base, key, '/api/mod/nachreichen/start',
+    { id: p.body.id, dateiname: 'DOCH.MP4' })).json();
+  await fetch(base + '/api/mod/nachreichen/teil?marke=' + start.marke, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', 'x-mod-key': key },
+    body: Buffer.alloc(2048, 9),
+  });
+  const fertig = await (await modFetch(base, key, '/api/mod/nachreichen/fertig',
+    { marke: start.marke })).json();
+  ok('Auch abgehakte Einträge nehmen ein Original an',
+    fertig.photo.hasOriginal === true);
 }
