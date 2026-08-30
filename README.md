@@ -219,10 +219,32 @@ Neuladen.
 
 ### In die Fotos-App sichern
 
-Der Knopf **📲 Sichern** übergibt die Dateien über die
-Web-Share-Schnittstelle ans Betriebssystem; dort erscheint „In Fotos
-sichern" bzw. „Bilder sichern". Das ist der einzige Weg, den ein Browser
-dafür hat, und er funktioniert auf iOS und Android.
+Der Knopf **📲 Sichern** führt auf iOS und Android bewusst zu
+unterschiedlichen Abläufen – weil die beiden Systeme unterschiedlich
+funktionieren:
+
+| | iOS | Android |
+|---|---|---|
+| Weg | Web-Share ans Betriebssystem | ganz normaler Download |
+| Was der Gast sieht | Teilen-Blatt mit „In Fotos sichern" | nichts, die Datei lädt |
+| Grössengrenze | 150 MB, darüber ein Anleitungsblatt | keine |
+| Anleitung nötig | ja | nein |
+
+**Auf iOS** ist Web-Share der einzige Weg, den ein Browser in die Fotos-App
+hat. Die Schnittstelle reicht die Datei komplett im Speicher weiter – daher
+die Grenze und das Anleitungsblatt für alles darüber.
+
+**Auf Android führt genau das in die Irre.** Im Teilen-Blatt von Android
+steht kein „In Fotos sichern", dort stehen Apps. Was dort tatsächlich in der
+Galerie landet, ist ein gewöhnlicher Download: Der Browser legt ihn unter
+„Download" ab, der Medien-Scanner nimmt ihn auf, und die Galerie zeigt ihn
+im Album „Downloads". Das läuft am Speicher vorbei und kennt deshalb **keine
+Grössengrenze**.
+
+Also tut der Knopf auf Android genau das – ohne Teilen-Blatt, ohne
+Grössenprüfung und **ohne Erklärblatt**, das dort nur ein Klick im Weg wäre.
+Der Toast sagt in einem Satz, wo die Datei gelandet ist. Bei Videos wird
+auch hier die Handy-Version genommen, wenn es eine gibt.
 
 **Ein eigenes Album kann eine Webseite nicht anlegen.** Das entscheidet das
 Betriebssystem – dafür bräuchte es eine echte App. Auf iOS landen die Bilder
@@ -258,7 +280,6 @@ auf dem Handy. Der eingebaute Weg des Geräts kennt diese Grenze **nicht**:
 - **Video auf iOS:** öffnen → der Player startet → Teilen-Symbol →
   „Video sichern"
 - **Bild auf iOS:** öffnen → gedrückt halten → „Zu Fotos hinzufügen"
-- **Android:** herunterladen – die Galerie-App zeigt es meist automatisch
 
 Ab 150 MB (und immer, wenn das Gerät ablehnt) blendet die Galerie deshalb
 ein **Anleitungsblatt** mit genau diesen Schritten und zwei Knöpfen ein:
@@ -266,7 +287,14 @@ ein **Anleitungsblatt** mit genau diesen Schritten und zwei Knöpfen ein:
 mehr – nur einen Schritt mehr.
 
 Im Vollbild steht bei grossen Dateien schon vorher ein Hinweis, damit
-niemand erst in eine Absage läuft.
+niemand erst in eine Absage läuft. **Auf Android erscheint weder das eine
+noch das andere** – dort gibt es nichts zu erklären.
+
+**Videos zeigen im Vollbild ihr Standbild.** Ohne `poster` malt vor allem
+Android ein schwarzes Rechteck, bis jemand auf Abspielen tippt – das
+Vorladen der Metadaten dekodiert dort kein einziges Bild. Das Anzeigebild
+ist genau dieser erste Frame und liegt ohnehin schon bereit, also wird es
+als `poster` gesetzt.
 
 **Die Grösse wird vorher geprüft, nicht nachher.** Das war der Grund für die
 Fehlermeldung bei grösseren Videos: Die Galerie lud erst die ganze Datei in
@@ -276,9 +304,10 @@ Entscheidung fällt vor dem Laden:
 
 | Fall | Was passiert |
 |---|---|
+| **Android**, egal wie gross | Download – keine Prüfung, kein Blatt |
 | Einzelne Datei über **150 MB** | Anleitungsblatt mit dem nativen Weg – keine Grössengrenze |
 | Auswahl über **150 MB** insgesamt | Bitte, weniger zu wählen oder das ZIP zu nehmen |
-| mehr als **10 Dateien** | Bitte, weniger zu wählen |
+| mehr als **10 Dateien** | Bitte, weniger zu wählen – dafür gibt es die ZIP-Pakete |
 | Gerät lehnt trotzdem ab | Anleitungsblatt statt Fehlermeldung |
 
 Während des Ladens läuft ein Fortschritt in Prozent – bei 80 MB ist das der
@@ -606,7 +635,7 @@ npm test
 ```
 
 Startet für jede Suite einen eigenen Server mit temporärem Datenverzeichnis
-und prüft 334 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
+und prüft 364 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
 bekannten Metadaten), Grundfunktionen (Upload, Moderation, Galerie, ZIP,
 Fehlerfälle), die Upload-Warteschlange inklusive nachgebautem iOS-Verhalten,
 die Abendfunktionen, Altfoto-Erkennung und Aufgaben-Editor sowie die
@@ -616,7 +645,11 @@ endgültiges Löschen –, das stückweise Nachreichen grosser Originale sowie
 Kategorien, Auswahl-Downloads, die Sichtungs-Seite, den stückweisen Upload
 grosser Videos, Dateigrössen, Begrüssung und Altfoto-Filter der Galerie
 sowie den Verlauf, Handy-Versionen, „kein Original", die Paket-Vorschau, die
-Datumskorrektur und das Fotobuch. Vor jedem Deploy einmal laufen lassen.
+Datumskorrektur, das Fotobuch samt Collagen-Vorlagen und schliesslich die
+Galerie selbst: Die läuft in einem nachgebauten DOM, damit sich der
+Sicherungs-Ablauf für Android und iOS getrennt durchspielen lässt – und
+damit auffällt, wenn das Vollbild-Video sein Standbild verliert.
+Vor jedem Deploy einmal laufen lassen.
 
 ## Projektstruktur
 

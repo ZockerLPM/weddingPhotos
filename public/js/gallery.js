@@ -29,6 +29,17 @@
   var istIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
+  /* Android geht einen ganz anderen Weg.
+   *
+   * Im Teilen-Blatt von Android steht kein „In Fotos sichern" – dort
+   * stehen Apps. Was dort wirklich in der Galerie landet, ist ein ganz
+   * gewöhnlicher Download: Der Browser legt ihn unter „Download" ab, der
+   * Medien-Scanner nimmt ihn auf, und die Galerie zeigt ihn im Album
+   * „Downloads". Das läuft am Speicher vorbei, kennt also keine
+   * Grössengrenze – weder Prüfung noch Anleitung nötig.
+   */
+  var istAndroid = /Android/.test(navigator.userAgent);
+
   var photos = [];
   var kategorien = [];
   var gefiltert = [];
@@ -50,6 +61,10 @@
   var elLb = el('lightbox');
   var elLbMedia = el('lbMedia');
   var elToast = el('toast');
+
+  // Auf Android heisst das Ziel „Galerie", nicht „Fotos" – und ein Knopf
+  // sollte benennen, was er wirklich tut.
+  if (istAndroid) el('lbSichern').textContent = '📲 In Galerie sichern';
 
   // ---------------------------------------------------------- Kleinkram
 
@@ -337,6 +352,12 @@
       video.controls = true;
       video.playsInline = true;
       video.preload = 'metadata';
+      /* Ohne Standbild zeigt vor allem Android ein schwarzes Rechteck,
+       * bis jemand auf Abspielen tippt – das Vorladen der Metadaten
+       * dekodiert dort kein einziges Bild. Das Anzeigebild ist genau
+       * dieser erste Frame und liegt ohnehin schon bereit.
+       */
+      video.poster = '/i/' + p.id + '-d.jpg';
       video.src = dateiUrl(p);
       elLbMedia.appendChild(video);
     } else {
@@ -373,7 +394,7 @@
     modLink.classList.toggle('hidden', !istVerwaltung);
     if (istVerwaltung) modLink.href = '/mod?foto=' + encodeURIComponent(p.id);
     el('lbSichern').classList.toggle('hidden',
-      !(navigator.canShare && navigator.share));
+      !(istAndroid || (navigator.canShare && navigator.share)));
 
     // Bei grossen Dateien gleich auf den nativen Weg hinweisen, statt den
     // Gast erst in eine Absage laufen zu lassen.
@@ -387,7 +408,7 @@
       tipp.textContent = 'Sichern nimmt die handytaugliche Fassung (' +
         groesse(p.mobilBytes) + '). Das Original steckt im ZIP.';
       tipp.classList.remove('hidden');
-    } else if (sicherBytes(p) > SHARE_MAX_EINZELN) {
+    } else if (!istAndroid && sicherBytes(p) > SHARE_MAX_EINZELN) {
       tipp.textContent = 'Grosse Datei – „Sichern" zeigt den passenden Weg.';
       tipp.classList.remove('hidden');
     } else {
@@ -473,6 +494,23 @@
    * heruntergeladen.
    */
   // Herunterladen statt Teilen – der verlässliche Weg für grosse Dateien.
+  /* Wie herunterladen(), nimmt aber die Fassung, die auch „Sichern"
+   * verspricht: die Handy-Version, wo es eine gibt. Das Original bleibt
+   * dem ⬇-Knopf und den ZIP-Paketen vorbehalten.
+   */
+  function sichernLaden(liste) {
+    liste.forEach(function (p, i) {
+      setTimeout(function () {
+        var a = document.createElement('a');
+        a.href = sicherUrl(p);
+        a.download = sicherName(p);
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }, i * 400);
+    });
+  }
+
   function herunterladen(liste) {
     liste.forEach(function (p, i) {
       setTimeout(function () {
@@ -521,16 +559,28 @@
   function inFotosSichern(liste) {
     if (!liste.length) return;
 
+    if (liste.length > SHARE_MAX_DATEIEN) {
+      toast('Bitte höchstens ' + SHARE_MAX_DATEIEN + ' auf einmal sichern – ' +
+        'für mehr gibt es die ZIP-Pakete.', 5000);
+      return;
+    }
+
+    // Auf Android ist der Download selbst schon der Weg in die Galerie.
+    // Kein Teilen-Blatt, keine Grössenprüfung, keine Anleitung.
+    if (istAndroid) {
+      sichernLaden(liste);
+      toast(liste.length === 1
+        ? 'Wird geladen – danach in der Galerie unter „Downloads".'
+        : liste.length + ' Dateien werden geladen – danach in der Galerie ' +
+          'unter „Downloads".', 5000);
+      return;
+    }
+
     var kannTeilen = !!(navigator.canShare && navigator.share);
     if (!kannTeilen) {
       herunterladen(liste);
       toast(liste.length === 1 ? 'Wird heruntergeladen …'
         : liste.length + ' Dateien werden heruntergeladen …');
-      return;
-    }
-
-    if (liste.length > SHARE_MAX_DATEIEN) {
-      toast('Bitte höchstens ' + SHARE_MAX_DATEIEN + ' auf einmal sichern.', 5000);
       return;
     }
 
@@ -613,6 +663,14 @@
    * es muss nur jemand zeigen.
    */
   function hilfeZeigen(p) {
+    // Auf Android gibt es nichts zu erklären – dort führt der Download
+    // direkt in die Galerie. Ein Blatt wäre nur ein Klick im Weg.
+    if (istAndroid) {
+      sichernLaden([p]);
+      toast('Wird geladen – danach in der Galerie unter „Downloads".', 5000);
+      return;
+    }
+
     var istVideo = p.kind !== 'photo';
     var titel = istVideo ? 'Video sichern' : 'Bild sichern';
     var schritte;
