@@ -112,4 +112,45 @@ export default async function run({ base, key, ok, dataDir }) {
     eintraege === feed2.photos.length,
     eintraege + ' im ZIP, ' + feed2.photos.length + ' sichtbar');
   await modFetch(base, key, '/api/mod/gallery', { open: false });
+
+  await grosserBestand({ base, key, ok });
+}
+
+/* Grosse Bestaende duerfen nicht stillschweigend abgeschnitten werden.
+ *
+ * Genau das passierte: Die Moderation forderte 500 Zeilen an, bei 871 Fotos
+ * fehlten also 371 - ohne jeden Hinweis. Sichtbar wurde es nur daran, dass
+ * die angezeigte Zahl nicht zur Datenbank passte.
+ */
+export async function grosserBestand({ base, key, ok }) {
+  const ZIEL = 520;                       // knapp ueber der alten Grenze
+  const vorher = (await (await fetch(base + '/api/feed')).json()).count;
+  const fehlen = ZIEL - vorher;
+
+  // In Schueben hochladen, sonst dauert der Test unnoetig lange.
+  for (let i = 0; i < fehlen; i += 40) {
+    const schub = [];
+    for (let k = 0; k < Math.min(40, fehlen - i); k++) {
+      schub.push(uploadPhoto(base, { who: 'Masse' + ((i + k) % 7) }));
+    }
+    await Promise.all(schub);
+  }
+  await wait(300);
+
+  const feed = await (await fetch(base + '/api/feed')).json();
+  ok('Feed liefert alle Fotos (Fotowand und Galerie)',
+    feed.count >= ZIEL, feed.count + ' von mindestens ' + ZIEL);
+
+  const mod = await (await fetch(base + '/api/mod/list?limit=2000',
+    { headers: { 'x-mod-key': key } })).json();
+  ok('Moderation liefert auch jenseits von 500 alle Einträge',
+    mod.photos.length === mod.total && mod.total >= ZIEL,
+    mod.photos.length + ' geliefert, ' + mod.total + ' vorhanden');
+
+  // Und wenn doch gekuerzt wird, muss es auffallen.
+  const kurz = await (await fetch(base + '/api/mod/list?limit=100',
+    { headers: { 'x-mod-key': key } })).json();
+  ok('Eine Kürzung ist an total/shown erkennbar',
+    kurz.photos.length === 100 && kurz.total > 100,
+    kurz.photos.length + ' von ' + kurz.total);
 }
