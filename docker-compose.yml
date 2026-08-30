@@ -2,6 +2,13 @@ services:
   app:
     build: .
     restart: unless-stopped
+    # Ohne Begrenzung wächst das Docker-Log unbegrenzt und kann irgendwann
+    # die Platte füllen.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     environment:
       - MOD_KEY=${MOD_KEY}
       - DATA_DIR=/data
@@ -21,6 +28,11 @@ services:
   caddy:
     image: caddy:2
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     ports:
       - "80:80"
       - "443:443"

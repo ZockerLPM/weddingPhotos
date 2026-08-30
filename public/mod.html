@@ -24,6 +24,7 @@
     <button class="btn" id="btnRecap">🌙 Rückblick starten</button>
     <button class="btn" id="btnEditChal">🎯 Aufgaben bearbeiten</button>
     <button class="btn" id="btnKat">🗂️ Kategorien</button>
+    <button class="btn" id="btnGruss">💛 Begrüssung</button>
     <button class="btn" id="btnNach">🧹 Nach der Feier</button>
     <a class="btn primary" href="/sichten">🔍 Sichten</a>
     <button class="btn" id="btnAuswahl">☑️ Mehrere auswählen</button>
@@ -54,10 +55,29 @@
       <button class="btn" id="btnDupes">🧬 Duplikate finden</button>
       <button class="btn primary" id="btnDownloads">📦 Downloads vorbereiten</button>
       <button class="btn" id="btnFehlende">🎬 Originale nachreichen</button>
+      <button class="btn" id="btnVerlauf">📜 Verlauf</button>
       <button class="btn danger" id="btnPurge">🗑️ Ausgeblendete löschen</button>
     </div>
     <p class="status" id="nachStatus"></p>
     <div id="nachErgebnis"></div>
+  </section>
+
+  <section class="editor hidden" id="grussEditor">
+    <h2>💛 Begrüssung der Galerie</h2>
+    <p class="hint-left">Steht ganz oben, wenn eure Gäste die Galerie
+      öffnen. Leer lassen stellt den Vorschlag wieder her.</p>
+    <label class="field" for="grussTitelFeld">Überschrift</label>
+    <input type="text" id="grussTitelFeld" maxlength="120"
+           placeholder="Danke, dass ihr da wart 💛">
+    <div style="height:10px"></div>
+    <label class="field" for="grussTextFeld">Text</label>
+    <textarea id="grussTextFeld" maxlength="600" rows="4"
+              placeholder="Ein paar warme Worte an eure Gäste …"></textarea>
+    <div class="editor-actions" style="margin-top:10px">
+      <button class="btn" id="btnGrussReset">↺ Vorschlag</button>
+      <button class="btn primary" id="btnGrussSave">Speichern</button>
+    </div>
+    <p class="status" id="grussStatus"></p>
   </section>
 
   <section class="editor hidden" id="katEditor">

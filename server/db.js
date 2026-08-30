@@ -76,6 +76,31 @@ ensureColumn('photos', 'sha256', 'TEXT');
 ensureColumn('photos', 'category', 'TEXT');
 // Merker fürs Sichten: erlaubt abzubrechen und später weiterzumachen.
 ensureColumn('photos', 'reviewed', 'INTEGER NOT NULL DEFAULT 0');
+// Grösse des Originals. Die Galerie muss VOR dem Herunterladen wissen,
+// worauf sie sich einlässt – sonst zieht sie erst 400 MB in den Speicher
+// und stellt dann fest, dass das Handy das nicht sichern kann.
+ensureColumn('photos', 'original_bytes', 'INTEGER');
+
+// Für den Bestand einmalig nachtragen.
+{
+  const offen = db.prepare(
+    `SELECT id, ext_original FROM photos
+     WHERE has_original = 1 AND original_bytes IS NULL`).all();
+  if (offen.length) {
+    const setzen = db.prepare('UPDATE photos SET original_bytes = ? WHERE id = ?');
+    db.transaction((rows) => {
+      for (const r of rows) {
+        let bytes = 0;
+        try {
+          bytes = fs.statSync(
+            path.join(PHOTOS_DIR, `${r.id}-o.${r.ext_original}`)).size;
+        } catch { /* Datei fehlt – 0 verhindert erneutes Prüfen */ }
+        setzen.run(bytes, r.id);
+      }
+    })(offen);
+    console.log(`Dateigrössen nachgetragen: ${offen.length}`);
+  }
+}
 db.exec('CREATE INDEX IF NOT EXISTS idx_photos_sha ON photos(sha256)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_photos_cat ON photos(category)');
 
@@ -110,7 +135,8 @@ const stmt = {
   byClientId: db.prepare(`SELECT * FROM photos WHERE client_id = ?`),
   byId: db.prepare(`SELECT * FROM photos WHERE id = ?`),
   markOriginal: db.prepare(
-    `UPDATE photos SET has_original = 1, ext_original = ?, mime_original = ? WHERE id = ?`),
+    `UPDATE photos SET has_original = 1, ext_original = ?, mime_original = ?,
+            original_bytes = ? WHERE id = ?`),
   setHidden: db.prepare(`UPDATE photos SET hidden = ? WHERE id = ?`),
   deletePhoto: db.prepare(`DELETE FROM photos WHERE id = ?`),
   countAll: db.prepare(`SELECT COUNT(*) AS n FROM photos`),
@@ -184,13 +210,19 @@ const stmt = {
     `INSERT INTO events (type, payload, created_at) VALUES (?, ?, ?)`),
   eventsAfter: db.prepare(
     `SELECT seq, type, payload FROM events WHERE seq > ? ORDER BY seq ASC LIMIT 1000`),
+  // Verlauf für die Moderation – neueste zuerst.
+  eventsLetzte: db.prepare(
+    `SELECT seq, type, payload, created_at FROM events
+     ORDER BY seq DESC LIMIT ?`),
   maxSeq: db.prepare(`SELECT COALESCE(MAX(seq), 0) AS seq FROM events`),
 };
 
 export function insertPhoto(p) { stmt.insertPhoto.run(p); }
 export function byClientId(cid) { return stmt.byClientId.get(cid); }
 export function byId(id) { return stmt.byId.get(id); }
-export function markOriginal(id, ext, mime) { stmt.markOriginal.run(ext, mime, id); }
+export function markOriginal(id, ext, mime, bytes) {
+  stmt.markOriginal.run(ext, mime, bytes || 0, id);
+}
 export function setHidden(id, hidden) { stmt.setHidden.run(hidden ? 1 : 0, id); }
 export function deletePhoto(id) { stmt.deletePhoto.run(id); }
 export function countAll() { return stmt.countAll.get().n; }
@@ -227,5 +259,6 @@ export function addEvent(type, payload) {
   return Number(stmt.addEvent.run(type, payload, Date.now()).lastInsertRowid);
 }
 export function eventsAfter(seq) { return stmt.eventsAfter.all(seq); }
+export function eventsLetzte(limit = 200) { return stmt.eventsLetzte.all(limit); }
 export function maxSeq() { return stmt.maxSeq.get().seq; }
 export function close() { db.close(); }

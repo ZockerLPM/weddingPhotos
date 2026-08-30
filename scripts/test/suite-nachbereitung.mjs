@@ -202,6 +202,7 @@ export default async function run({ base, key, ok, dataDir }) {
   await modFetch(base, key, '/api/mod/gallery', { open: false });
   await nachreichen({ base, key, ok, dataDir });
   await sichten({ base, key, ok });
+  await verlauf({ base, key, ok });
 }
 
 /* Grosse Originale nachreichen.
@@ -372,4 +373,38 @@ export async function sichten({ base, key, ok }) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: a.body.id, reviewed: true }),
     })).status === 401);
+}
+
+/* Verlauf und Protokollierung. */
+export async function verlauf({ base, key, ok }) {
+  const vorher = await (await fetch(base + '/api/mod/verlauf?limit=5',
+    { headers: { 'x-mod-key': key } })).json();
+  ok('Verlauf ist abrufbar', Array.isArray(vorher.zeilen),
+    JSON.stringify(vorher).slice(0, 80));
+
+  const p = await uploadPhoto(base, { who: 'Chronist', kind: 'video' });
+  await wait(200);
+
+  const d = await (await fetch(base + '/api/mod/verlauf?limit=50',
+    { headers: { 'x-mod-key': key } })).json();
+  const eintrag = d.zeilen.find((z) => z.id === p.body.id);
+  ok('Der Upload steht im Verlauf', !!eintrag && eintrag.art === 'photo');
+  ok('Mit Name und Art', eintrag?.wer === 'Chronist' && eintrag?.kind === 'video');
+  ok('Neueste zuerst', d.zeilen[0].seq >= d.zeilen[d.zeilen.length - 1].seq);
+  ok('Die Gesamtzahl wird gemeldet', typeof d.gesamt === 'number' && d.gesamt > 0);
+
+  await modFetch(base, key, '/api/mod/hide', { id: p.body.id, hidden: true });
+  await wait(200);
+  const d2 = await (await fetch(base + '/api/mod/verlauf?limit=50',
+    { headers: { 'x-mod-key': key } })).json();
+  ok('Auch das Ausblenden wird festgehalten',
+    d2.zeilen.some((z) => z.art === 'hide' && z.id === p.body.id && z.hidden === true));
+  await modFetch(base, key, '/api/mod/hide', { id: p.body.id, hidden: false });
+
+  ok('Verlauf braucht den Schlüssel',
+    (await fetch(base + '/api/mod/verlauf')).status === 401);
+
+  const gross = await (await fetch(base + '/api/mod/verlauf?limit=99999',
+    { headers: { 'x-mod-key': key } })).json();
+  ok('Die Menge ist begrenzt', gross.zeilen.length <= 1000);
 }

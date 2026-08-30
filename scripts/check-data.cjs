@@ -176,12 +176,14 @@ line('=== Reparatur ===');
 
 // 1. Originale wieder anmelden – die ID steht im Dateinamen, also sicher.
 const markOriginal = db.prepare(
-  'UPDATE photos SET has_original = 1, ext_original = ? WHERE id = ?');
+  'UPDATE photos SET has_original = 1, ext_original = ?, original_bytes = ? WHERE id = ?');
 let verknuepft = 0;
 for (const { row, file } of nichtVerknuepft) {
   const ext = path.extname(file).slice(1).toLowerCase();
   if (!/^[a-z0-9]{1,5}$/.test(ext)) continue;
-  markOriginal.run(ext, row.id);
+  let bytes = 0;
+  try { bytes = fs.statSync(path.join(PHOTOS, file)).size; } catch { /* egal */ }
+  markOriginal.run(ext, bytes, row.id);
   verknuepft++;
 }
 line(`${n(verknuepft)}  Originale wieder verknüpft`);

@@ -357,6 +357,51 @@
     }).catch(function () { chalStatus('Zurücksetzen fehlgeschlagen.', 'err'); });
   });
 
+  // ------------------------------------------------------------ Begrüssung
+
+  var elGrussEditor = document.getElementById('grussEditor');
+  var elGrussStatus = document.getElementById('grussStatus');
+
+  function grussStatus(text, cls) {
+    elGrussStatus.textContent = text || '';
+    elGrussStatus.className = 'status' + (cls ? ' ' + cls : '');
+  }
+
+  document.getElementById('btnGruss').addEventListener('click', function () {
+    var oeffnen = elGrussEditor.classList.contains('hidden');
+    elGrussEditor.classList.toggle('hidden', !oeffnen);
+    if (!oeffnen) return;
+    grussStatus('');
+    fetch('/api/feed').then(function (r) { return r.json(); })
+      .then(function (f) {
+        document.getElementById('grussTitelFeld').value = (f.gruss && f.gruss.titel) || '';
+        document.getElementById('grussTextFeld').value = (f.gruss && f.gruss.text) || '';
+        elGrussEditor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }).catch(function () {});
+  });
+
+  document.getElementById('btnGrussSave').addEventListener('click', function () {
+    grussStatus('Wird gespeichert …');
+    api('/api/mod/gruss', {
+      titel: document.getElementById('grussTitelFeld').value,
+      text: document.getElementById('grussTextFeld').value,
+    }).then(function (r) {
+      document.getElementById('grussTitelFeld').value = r.gruss.titel;
+      document.getElementById('grussTextFeld').value = r.gruss.text;
+      grussStatus('✓ Gespeichert – die Galerie zeigt es sofort.', 'ok');
+    }).catch(function () { grussStatus('Speichern fehlgeschlagen.', 'err'); });
+  });
+
+  document.getElementById('btnGrussReset').addEventListener('click', function () {
+    document.getElementById('grussTitelFeld').value = '';
+    document.getElementById('grussTextFeld').value = '';
+    api('/api/mod/gruss', { titel: '', text: '' }).then(function (r) {
+      document.getElementById('grussTitelFeld').value = r.gruss.titel;
+      document.getElementById('grussTextFeld').value = r.gruss.text;
+      grussStatus('✓ Vorschlag wiederhergestellt.', 'ok');
+    }).catch(function () { grussStatus('Fehlgeschlagen.', 'err'); });
+  });
+
   // ------------------------------------------------------------ Kategorien
 
   function kategorieVon(id) {
@@ -928,6 +973,64 @@
         elNachErgebnis.appendChild(ul);
       })
       .catch(function () { nachStatus('Liste konnte nicht geladen werden.', 'err'); });
+  });
+
+  /* Verlauf des Abends.
+   *
+   * Quelle ist die Ereignistabelle der Datenbank, nicht das Docker-Log:
+   * Sie überlebt Neustarts und wird nicht gedreht.
+   */
+  var ART_TEXT = {
+    photo: 'hochgeladen',
+    hide: 'ausgeblendet',
+    update: 'geändert',
+    control: 'Fotowand gesteuert',
+    challenges: 'Aufgaben geändert',
+    kategorien: 'Kategorien geändert',
+    gruss: 'Begrüssung geändert',
+  };
+
+  document.getElementById('btnVerlauf').addEventListener('click', function () {
+    elNachErgebnis.textContent = '';
+    nachStatus('Verlauf wird geladen …');
+    fetch('/api/mod/verlauf?limit=300', { headers: { 'x-mod-key': key } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var zeilen = d.zeilen || [];
+        if (!zeilen.length) { nachStatus('Noch kein Verlauf.', 'ok'); return; }
+        nachStatus('Die letzten ' + zeilen.length + ' von ' + d.gesamt +
+          ' Ereignissen, neueste zuerst.');
+
+        var ul = document.createElement('ul');
+        ul.className = 'verlauf';
+        zeilen.forEach(function (z) {
+          var li = document.createElement('li');
+          if (z.art === 'photo') li.className = 'neu';
+          if (z.art === 'hide' && z.hidden) li.className = 'weg';
+
+          var zeit = document.createElement('span');
+          zeit.className = 'zeit';
+          zeit.textContent = new Date(z.zeit).toLocaleString('de-AT', {
+            day: '2-digit', month: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+          });
+
+          var was = document.createElement('span');
+          was.className = 'was';
+          var teile = [];
+          if (z.kind) teile.push(z.kind === 'photo' ? '📷' : z.kind === 'video' ? '🎬' : '🎙️');
+          teile.push(ART_TEXT[z.art] || z.art);
+          if (z.art === 'hide' && z.hidden === false) teile[teile.length - 1] = 'wieder gezeigt';
+          if (z.wer) teile.push('· ' + z.wer);
+          was.textContent = teile.join(' ');
+
+          li.appendChild(zeit);
+          li.appendChild(was);
+          ul.appendChild(li);
+        });
+        elNachErgebnis.appendChild(ul);
+      })
+      .catch(function () { nachStatus('Verlauf konnte nicht geladen werden.', 'err'); });
   });
 
   document.getElementById('btnPurge').addEventListener('click', function () {

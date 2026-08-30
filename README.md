@@ -193,14 +193,28 @@ Die Galerie ist fürs Handy gebaut, nicht nur dafür angepasst:
   man ein Fotoalbum durchblättert. Innerhalb einer Kategorie geht es
   chronologisch weiter. Ist ein Kategorie-Filter aktiv, wird stattdessen
   nach Tagen gruppiert – eine zweite Ebene wäre dort sinnlos.
+- **📼 Von früher** steht als eigener Filter ganz am Ende der Leiste und in
+  der Übersicht als letzter Abschnitt. Mitgebrachte Altfotos gehören nicht
+  in den Ablauf des Tages, sind aber eine eigene kleine Sammlung.
 - **Raster** mit drei Spalten und minimalen Abständen – auf dem Handy zählt
   jeder Pixel; ab 620 px Breite wird automatisch umgestellt.
 - **Aktionsleiste unten**, weil dort der Daumen ist. Sie klebt am unteren
   Rand und respektiert die Gerätekante (`safe-area-inset`).
 - **Vollbildansicht** mit Wischgesten: seitlich blättern, nach unten
-  schliessen. Nachbarbilder werden vorgeladen, Videos laufen inline.
+  schliessen. Blätter-Pfeile liegen über dem Bild, unten stehen zwei klar
+  beschriftete Knöpfe: **📲 In Fotos sichern** und **⬇️ 42 MB** – die
+  Grösse steht am Knopf, man weiss also vorher, worauf man sich einlässt.
+  Nachbarbilder werden vorgeladen, Videos laufen inline.
 - **Mehrfachauswahl** per Knopf oder langem Drücken auf eine Kachel.
   „Alle" wählt die gerade gefilterte Ansicht.
+
+### Begrüssung
+
+Ganz oben steht ein kurzer Dank an die Gäste, darunter drei Zeilen, die
+erklären, wie die Seite funktioniert. Text und Überschrift sind in der
+Moderation unter **💛 Begrüssung** änderbar – es sind eure Worte, der
+Standard ist nur ein Vorschlag. Änderungen erscheinen sofort, ohne
+Neuladen.
 
 ### In die Fotos-App sichern
 
@@ -215,10 +229,42 @@ in „Zuletzt", auf Android im Ordner der Downloads bzw. der Galerie. Wer die
 Fotos gebündelt in einem Ordner haben will, lädt ein ZIP-Paket und entpackt
 es; daraus wird auf Android ein eigenes Album.
 
-Grenzen, die bewusst gesetzt sind: höchstens **10 Dateien** und **120 MB**
-pro Vorgang. Darüber bricht vor allem iOS ab, ohne es zu melden – dann kommt
-lieber ein verständlicher Hinweis. Wo Teilen nicht geht (die meisten
-Rechner-Browser), wird stattdessen heruntergeladen.
+**Für grosse Dateien gibt es den nativen Weg.** Die Web-Share-Schnittstelle
+braucht die Datei komplett im Speicher – daran scheitert ein 300-MB-Video
+auf dem Handy. Der eingebaute Weg des Geräts kennt diese Grenze **nicht**:
+
+- **Video auf iOS:** öffnen → der Player startet → Teilen-Symbol →
+  „Video sichern"
+- **Bild auf iOS:** öffnen → gedrückt halten → „Zu Fotos hinzufügen"
+- **Android:** herunterladen – die Galerie-App zeigt es meist automatisch
+
+Ab 150 MB (und immer, wenn das Gerät ablehnt) blendet die Galerie deshalb
+ein **Anleitungsblatt** mit genau diesen Schritten und zwei Knöpfen ein:
+„Öffnen" und „In Dateien laden". Damit gibt es keine Grössenbeschränkung
+mehr – nur einen Schritt mehr.
+
+Im Vollbild steht bei grossen Dateien schon vorher ein Hinweis, damit
+niemand erst in eine Absage läuft.
+
+**Die Grösse wird vorher geprüft, nicht nachher.** Das war der Grund für die
+Fehlermeldung bei grösseren Videos: Die Galerie lud erst die ganze Datei in
+den Speicher und stellte danach fest, dass das Handy sie nicht sichern kann.
+Jetzt steht die Dateigrösse im Datensatz (`original_bytes`), und die
+Entscheidung fällt vor dem Laden:
+
+| Fall | Was passiert |
+|---|---|
+| Einzelne Datei über **150 MB** | Anleitungsblatt mit dem nativen Weg – keine Grössengrenze |
+| Auswahl über **150 MB** insgesamt | Bitte, weniger zu wählen oder das ZIP zu nehmen |
+| mehr als **10 Dateien** | Bitte, weniger zu wählen |
+| Gerät lehnt trotzdem ab | Anleitungsblatt statt Fehlermeldung |
+
+Während des Ladens läuft ein Fortschritt in Prozent – bei 80 MB ist das der
+Unterschied zwischen „hängt" und „läuft noch". Geladen wird nacheinander,
+nicht gleichzeitig, damit der Speicher des Handys nicht unnötig belastet wird.
+
+Wo Teilen gar nicht geht (die meisten Rechner-Browser), wird ohne Umweg
+heruntergeladen.
 
 ### Downloads in der Galerie
 
@@ -332,6 +378,48 @@ Bereichsanfragen aus (`/d/…`, über `express.static`). Ein abgebrochener
 Download setzt dort fort, wo er aufhörte. Zusätzlich sind die grossen
 Pakete in Teile von 1,5 GB geschnitten (`ZIP_TEIL_MB`).
 
+## Logs lesen
+
+**Server-Log** (Docker, auf dem Server):
+
+```bash
+cd /opt/hochzeit/app
+docker compose logs -f app              # laufend mitlesen
+docker compose logs --tail=200 app      # die letzten 200 Zeilen
+docker compose logs --since 2h app      # die letzten zwei Stunden
+docker compose logs caddy               # TLS und Weiterleitung
+```
+
+Was dort steht:
+
+| Zeile | Bedeutung |
+|---|---|
+| `[upload] 01M… photo Anna` | Beitrag angekommen, mit Art und Name |
+| `[original] 01M… mov 84 MB` | Original nachgeliefert |
+| `[Upload abgebrochen] …` | Handy im Standby, Netz weg – die Warteschlange sendet neu |
+| `Datenbank ergänzt: …` | Migration beim Start |
+| `Dateigrössen nachgetragen: …` | einmalige Nachrüstung |
+
+Nur nach Uploads filtern:
+
+```bash
+docker compose logs app | grep -E '^[upload|^[original'
+docker compose logs app | grep 'Upload abgebrochen' | wc -l
+```
+
+Die Logs sind auf **10 MB je Datei und 5 Dateien** begrenzt
+(`logging` in `docker-compose.yml`) – ohne diese Begrenzung wachsen sie
+unbegrenzt und können die Platte füllen.
+
+**Verlauf in der Moderation** – 🧹 Nach der Feier → **📜 Verlauf**. Quelle
+ist die Ereignistabelle der Datenbank, nicht das Docker-Log: Sie übersteht
+Neustarts und wird nicht gedreht. Dort steht mit Zeitstempel, was hochgeladen,
+ausgeblendet oder geändert wurde – der verlässlichere Rückblick auf den Abend.
+
+**Was der Gast sieht:** Auf der Upload-Seite steht unter jedem Bild der
+Stand („lädt 42 %", „✓✓ komplett gesichert", „⚠️ …"). Ein fehlgeschlagener
+Upload lässt sich dort antippen und neu starten.
+
 ## Bestand prüfen
 
 Wenn im `data`-Ordner mehr zu liegen scheint, als in Fotowand und Galerie
@@ -374,15 +462,16 @@ npm test
 ```
 
 Startet für jede Suite einen eigenen Server mit temporärem Datenverzeichnis
-und prüft 232 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
+und prüft 252 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
 bekannten Metadaten), Grundfunktionen (Upload, Moderation, Galerie, ZIP,
 Fehlerfälle), die Upload-Warteschlange inklusive nachgebautem iOS-Verhalten,
 die Abendfunktionen, Altfoto-Erkennung und Aufgaben-Editor sowie die
 Übereinstimmung von Datenbank und Dateien, die gesamte Nachbereitung –
 Serien, Duplikate, Favoriten, Paketbau, fortsetzbare Downloads und
 endgültiges Löschen –, das stückweise Nachreichen grosser Originale sowie
-Kategorien, Auswahl-Downloads, die Sichtungs-Seite und den stückweisen
-Upload grosser Videos. Vor jedem Deploy einmal laufen lassen.
+Kategorien, Auswahl-Downloads, die Sichtungs-Seite, den stückweisen Upload
+grosser Videos, Dateigrössen, Begrüssung und Altfoto-Filter der Galerie
+sowie den Verlauf. Vor jedem Deploy einmal laufen lassen.
 
 ## Projektstruktur
 
@@ -660,6 +749,7 @@ anlegen, gesichertes `data/` nach `/opt/hochzeit/app/data/` kopieren,
 | Video wird nicht hochgeladen | Behoben. Bisher scheiterte der ganze Upload, wenn sich kein Standbild aus dem Video gewinnen liess. Jetzt gibt es einen Platzhalter, das Video geht in jedem Fall hoch |
 | Video zeigt eine schwarze Kachel mit 🎬 | Der Browser konnte kein Standbild gewinnen (oft HEVC vom iPhone in Chrome). Das Video selbst ist vollständig gespeichert |
 | Video kam nur als Vorschaubild an | Behoben: Originale gehen jetzt auch beim Gäste-Upload in 8-MB-Stücken hoch. Altbestand über **🧹 Nach der Feier → 🎬 Originale nachreichen** ergänzen |
+| Fehler beim Sichern grosser Videos in die Fotos-App | Behoben. Die Galerie prüft die Grösse jetzt vorher und lädt grosse Dateien herunter, statt sie erfolglos zu teilen |
 | Video lässt sich in der Galerie nicht abspielen | `.mov` mit HEVC spielt Safari, Chrome oft nicht. Die Datei ist in Ordnung – über den Download-Knopf lokal öffnen |
 | `mkstemp ... Operation not permitted` beim Backup | Ziel liegt auf einem Windows-Laufwerk unter WSL. Aktuelles `backup-pull.sh` verwenden oder auf `backup-pull.ps1` wechseln |
 | Backup: `bash: syntax error near unexpected token '('` | Behoben. PowerShell entfernte beim Aufruf nativer Programme die inneren Anführungszeichen, dadurch kam `node -e eval(...)` ohne Quotes auf dem Server an. Das Skript schickt das Snippet jetzt über stdin an `node` |

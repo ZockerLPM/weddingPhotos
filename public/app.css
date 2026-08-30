@@ -122,6 +122,24 @@ input[type="text"]:focus {
 }
 
 .editor h2 { font-size: 1.05rem; margin: 0 0 6px; }
+
+.editor textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #3a3f48;
+  background: var(--card2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.editor textarea:focus {
+  outline: 2px solid var(--accent);
+  border-color: transparent;
+}
 .hint-left { color: var(--muted); font-size: .82rem; margin: 0 0 12px; }
 
 .chal-edit { list-style: none; margin: 0 0 12px; padding: 0; }
@@ -311,6 +329,29 @@ body.auswahl-offen { padding-bottom: 120px; }
 .fehlliste .fortschritt { color: var(--accent); font-size: .82rem; }
 .fehlliste .fertig { color: var(--ok); font-size: .82rem; }
 .fehlliste label.btn { flex: none; cursor: pointer; }
+
+/* Verlauf */
+.verlauf {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+  font-size: .85rem;
+}
+
+.verlauf li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 8px;
+  border-bottom: 1px solid #262a31;
+}
+
+.verlauf .zeit { color: var(--muted); flex: none; font-variant-numeric: tabular-nums; }
+.verlauf .was { flex: 1; min-width: 0; }
+.verlauf li.neu .was { color: var(--ok); }
+.verlauf li.weg .was { color: var(--err); }
 
 .paketliste { list-style: none; margin: 10px 0 0; padding: 0; }
 
@@ -514,14 +555,59 @@ body.galerie {
 
 body.lb-offen { overflow: hidden; }   /* kein Scrollen hinter dem Vollbild */
 
-.galkopf {
-  max-width: 1100px;
+/* Begrüssung – das Erste, was ein Gast sieht. Bewusst warm und kurz;
+   auf dem Handy darf sie nicht den halben Bildschirm einnehmen. */
+.gruss {
+  max-width: 620px;
   margin: 0 auto;
-  padding: 16px 14px 4px;
+  padding: 22px 18px 14px;
+  text-align: center;
 }
 
-.galkopf h1 { font-size: 1.35rem; margin: 0 0 2px; }
-.galkopf .sub { margin: 0; font-size: .9rem; }
+.gruss h1 {
+  font-size: 1.5rem;
+  line-height: 1.25;
+  margin: 0 0 10px;
+  color: var(--accent);
+}
+
+.gruss-text {
+  margin: 0 0 12px;
+  font-size: .98rem;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.gruss-zahlen {
+  margin: 0 0 14px;
+  font-size: .85rem;
+  color: var(--muted);
+}
+
+.gruss-hilfe {
+  list-style: none;
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--card);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 6px;
+  text-align: left;
+  font-size: .87rem;
+  color: var(--muted);
+}
+
+.gruss-hilfe b { color: var(--text); }
+
+@media (min-width: 620px) {
+  .gruss { padding: 32px 20px 18px; }
+  .gruss h1 { font-size: 1.9rem; }
+  .gruss-hilfe {
+    grid-template-columns: repeat(3, 1fr);
+    text-align: center;
+    gap: 10px;
+  }
+}
 
 /* Filterleiste: klebt oben, waagrecht scrollbar */
 .chipsleiste {
@@ -776,11 +862,41 @@ body.galerie .favhead { font-size: 1.05rem; }
 
 .lightbox .media {
   flex: 1;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 0;
   padding: 0 6px;
+}
+
+/* Pfeile liegen über dem Bild – in der Fusszeile nahmen sie den
+   Aktionsknöpfen den Platz weg. */
+.lbpfeil {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 44px;
+  height: 64px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(10, 11, 13, .45);
+  color: #fff;
+  font-size: 1.9rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lbpfeil.links { left: 4px; }
+.lbpfeil.rechts { right: 4px; }
+.lbpfeil:active { background: rgba(10, 11, 13, .75); }
+
+@media (min-width: 620px) {
+  .lbpfeil { width: 52px; height: 88px; font-size: 2.2rem; }
 }
 
 .lightbox .media img,
@@ -798,12 +914,92 @@ body.galerie .favhead { font-size: 1.05rem; }
 .lbknoepfe {
   display: flex;
   gap: 8px;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
 }
 
-.lbknoepfe .btn { padding: 12px 18px; }
-.lbknoepfe .btn:first-child, .lbknoepfe .btn:last-child { padding: 12px 20px; font-size: 1.2rem; }
+.lbknoepfe .btn {
+  padding: 14px 18px;
+  font-size: .95rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+#lbSichern { flex: 1 1 0; max-width: 260px; }
+#lbDownload { flex: none; }
+
+/* Anleitungsblatt für grosse Dateien */
+.blatt {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(8, 9, 11, .8);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+@media (min-width: 620px) { .blatt { align-items: center; } }
+
+.blatt-innen {
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+  background: var(--card);
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 22px 20px;
+  padding-bottom: calc(22px + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 620px) {
+  .blatt-innen { border-radius: var(--radius); }
+}
+
+.blatt-innen h2 { font-size: 1.15rem; margin: 0 0 8px; color: var(--accent); }
+.blatt-text { color: var(--muted); font-size: .9rem; margin: 0 0 14px; }
+
+.blatt-schritte {
+  margin: 0 0 18px;
+  padding-left: 22px;
+  display: grid;
+  gap: 8px;
+  font-size: .95rem;
+  line-height: 1.45;
+}
+
+.blatt-knoepfe { display: flex; gap: 8px; }
+
+.blatt-knoepfe .btn {
+  flex: 1;
+  padding: 14px 12px;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.blatt-zu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: 6px 10px;
+}
+
+.lbtipp {
+  text-align: center;
+  color: var(--muted);
+  font-size: .8rem;
+  margin: 9px 0 0;
+  line-height: 1.4;
+}
 
 /* Kurzmeldung */
 .toast {

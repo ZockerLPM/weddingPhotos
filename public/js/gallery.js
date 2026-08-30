@@ -12,9 +12,22 @@
 (function () {
   'use strict';
 
-  // iOS wird beim Teilen vieler oder grosser Dateien unzuverlässig.
+  /* Grenzen fürs Sichern in die Fotos-App.
+   *
+   * Die Web-Share-Schnittstelle reicht die Dateien komplett im Speicher
+   * weiter. Bei einem 400-MB-Video bricht vor allem iOS dabei ab – und
+   * zwar erst, NACHDEM alles geladen wurde. Deshalb wird die Grösse
+   * vorher aus den Metadaten geprüft, nicht erst nach dem Herunterladen.
+   */
   var SHARE_MAX_DATEIEN = 10;
-  var SHARE_MAX_BYTES = 120 * 1024 * 1024;
+  var SHARE_MAX_BYTES = 150 * 1024 * 1024;   // Summe einer Auswahl
+  var SHARE_MAX_EINZELN = 150 * 1024 * 1024; // eine einzelne Datei
+
+  // Auf iOS führt bei grossen Dateien der eingebaute Weg zum Ziel: Videos
+  // über den Player, Bilder über langes Drücken. Beides kennt KEINE
+  // Grössenbeschränkung – anders als das Übergeben im Speicher.
+  var istIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
   var photos = [];
   var kategorien = [];
@@ -111,9 +124,18 @@
         chip(k.icon + ' ' + k.name + ' ' + n, k.id, filterKat === k.id));
     });
 
-    var ohne = photos.filter(function (p) { return !p.category; }).length;
+    var ohne = photos.filter(function (p) {
+      return !p.category && !p.archive;
+    }).length;
     if (ohne && kategorien.length) {
-      elChips.appendChild(chip('Ohne Kategorie ' + ohne, '∅', filterKat === '∅'));
+      elChips.appendChild(chip('Weitere ' + ohne, '∅', filterKat === '∅'));
+    }
+
+    // Mitgebrachte Altfotos ganz zum Schluss – sie gehören nicht zum
+    // Ablauf des Tages, sind aber eine eigene kleine Sammlung.
+    var alt = photos.filter(function (p) { return p.archive; }).length;
+    if (alt) {
+      elChips.appendChild(chip('📼 Von früher ' + alt, '📼', filterKat === '📼'));
     }
   }
 
@@ -121,7 +143,8 @@
     return photos.filter(function (p) {
       if (filterGast && p.uploader !== filterGast) return false;
       if (filterKat === '★') return p.favorite;
-      if (filterKat === '∅') return !p.category;
+      if (filterKat === '📼') return p.archive;
+      if (filterKat === '∅') return !p.category && !p.archive;
       if (filterKat) return p.category === filterKat;
       return true;
     });
@@ -284,7 +307,8 @@
     var p = gefiltert[i];
     if (!p) return;
 
-    elLbMedia.textContent = '';
+    var altesMedium = elLbMedia.querySelector('img, video');
+    if (altesMedium) altesMedium.remove();
     if ((p.kind === 'video' || p.kind === 'message') && p.hasOriginal) {
       var video = document.createElement('video');
       video.controls = true;
@@ -315,6 +339,27 @@
     el('lbPos').textContent = (i + 1) + ' / ' + gefiltert.length;
     el('lbDownload').href = dateiUrl(p);
     el('lbDownload').setAttribute('download', dateiName(p));
+    // Grösse am Knopf – dann weiss man vorher, worauf man sich einlässt.
+    el('lbGroesse').textContent = p.bytes ? groesse(p.bytes) : 'Laden';
+    el('lbSichern').classList.toggle('hidden',
+      !(navigator.canShare && navigator.share));
+
+    // Bei grossen Dateien gleich auf den nativen Weg hinweisen, statt den
+    // Gast erst in eine Absage laufen zu lassen.
+    var tipp = el('lbTipp');
+    if (p.bytes > SHARE_MAX_EINZELN) {
+      tipp.textContent = istIOS
+        ? (p.kind === 'photo'
+            ? 'Grosses Bild – gedrückt halten und „Zu Fotos hinzufügen" wählen.'
+            : 'Grosses Video – „In Fotos sichern" zeigt den passenden Weg.')
+        : 'Grosse Datei – wird beim Sichern heruntergeladen.';
+      tipp.classList.remove('hidden');
+    } else if (istIOS && p.kind === 'photo') {
+      tipp.textContent = 'Tipp: Bild gedrückt halten → „Zu Fotos hinzufügen".';
+      tipp.classList.remove('hidden');
+    } else {
+      tipp.classList.add('hidden');
+    }
 
     elLb.classList.remove('hidden');
     document.body.classList.add('lb-offen');
@@ -328,7 +373,8 @@
 
   function lbSchliessen() {
     elLb.classList.add('hidden');
-    elLbMedia.textContent = '';        // stoppt laufende Videos
+    var m = elLbMedia.querySelector('img, video');
+    if (m) m.remove();                 // stoppt laufende Videos
     document.body.classList.remove('lb-offen');
     lbIndex = -1;
   }
@@ -340,8 +386,12 @@
   }
 
   el('lbClose').addEventListener('click', lbSchliessen);
-  el('lbPrev').addEventListener('click', function () { lbSchritt(-1); });
-  el('lbNext').addEventListener('click', function () { lbSchritt(1); });
+  el('lbPrev').addEventListener('click', function (e) {
+    e.stopPropagation(); lbSchritt(-1);
+  });
+  el('lbNext').addEventListener('click', function (e) {
+    e.stopPropagation(); lbSchritt(1);
+  });
   el('lbSichern').addEventListener('click', function () {
     if (gefiltert[lbIndex]) inFotosSichern([gefiltert[lbIndex]]);
   });
@@ -389,65 +439,206 @@
    * Wo Teilen nicht geht (die meisten Rechner-Browser), wird stattdessen
    * heruntergeladen.
    */
+  // Herunterladen statt Teilen – der verlässliche Weg für grosse Dateien.
+  function herunterladen(liste) {
+    liste.forEach(function (p, i) {
+      setTimeout(function () {
+        var a = document.createElement('a');
+        a.href = dateiUrl(p);
+        a.download = dateiName(p);
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }, i * 400);   // Browser mögen keine Download-Lawine
+    });
+  }
+
+  /* Datei holen und dabei den Fortschritt melden.
+   *
+   * Ein schlichtes fetch().blob() lässt den Gast bei 80 MB eine Minute im
+   * Ungewissen. Über den Lesestrom lässt sich sagen, wie weit es ist.
+   */
+  function holeMitFortschritt(p, melde) {
+    return fetch(dateiUrl(p)).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      var gesamt = Number(r.headers.get('content-length')) || p.bytes || 0;
+      if (!r.body || !r.body.getReader) return r.blob();
+
+      var leser = r.body.getReader();
+      var teile = [];
+      var geladen = 0;
+      return (function weiter() {
+        return leser.read().then(function (res) {
+          if (res.done) return new Blob(teile, { type: r.headers.get('content-type') || '' });
+          teile.push(res.value);
+          geladen += res.value.length;
+          if (melde && gesamt) melde(geladen / gesamt);
+          return weiter();
+        });
+      })();
+    });
+  }
+
+  /* In die Fotos-App des Handys sichern.
+   *
+   * Reihenfolge ist wichtig: ERST die Grösse aus den Metadaten prüfen,
+   * dann laden. Andersherum zieht das Handy 400 MB in den Speicher und
+   * scheitert danach – genau die Fehlermeldung, die es zu vermeiden gilt.
+   */
   function inFotosSichern(liste) {
     if (!liste.length) return;
 
-    if (liste.length > SHARE_MAX_DATEIEN) {
-      toast('Bitte höchstens ' + SHARE_MAX_DATEIEN +
-        ' auf einmal sichern – sonst bricht das Handy ab.', 5000);
-      return;
-    }
-
     var kannTeilen = !!(navigator.canShare && navigator.share);
     if (!kannTeilen) {
-      liste.forEach(function (p, i) {
-        setTimeout(function () {
-          var a = document.createElement('a');
-          a.href = dateiUrl(p);
-          a.download = dateiName(p);
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-        }, i * 400);   // Browser mögen keine Download-Lawine
-      });
+      herunterladen(liste);
       toast(liste.length === 1 ? 'Wird heruntergeladen …'
         : liste.length + ' Dateien werden heruntergeladen …');
       return;
     }
 
-    toast('Dateien werden vorbereitet …', 10000);
-    var summe = 0;
+    if (liste.length > SHARE_MAX_DATEIEN) {
+      toast('Bitte höchstens ' + SHARE_MAX_DATEIEN + ' auf einmal sichern.', 5000);
+      return;
+    }
 
-    Promise.all(liste.map(function (p) {
-      return fetch(dateiUrl(p))
-        .then(function (r) { return r.blob(); })
-        .then(function (b) {
-          summe += b.size;
-          return new File([b], dateiName(p), { type: b.type });
+    // Grössen stehen im Datensatz – kein Herunterladen nötig, um zu wissen,
+    // ob es passt.
+    var summe = 0;
+    var zuGross = null;
+    liste.forEach(function (p) {
+      var b = p.bytes || 0;
+      summe += b;
+      if (b > SHARE_MAX_EINZELN && !zuGross) zuGross = p;
+    });
+
+    // Eine einzelne grosse Datei: den nativen Weg zeigen statt abzusagen.
+    if (zuGross && liste.length === 1) { hilfeZeigen(zuGross); return; }
+    if (zuGross) {
+      toast('Eine Datei der Auswahl ist zu gross. Bitte einzeln antippen – ' +
+        'dann zeige ich, wie es geht.', 6000);
+      return;
+    }
+
+    if (summe > SHARE_MAX_BYTES) {
+      toast('Zusammen ' + groesse(summe) + ' – bitte weniger auswählen ' +
+        'oder als ZIP laden.', 5000);
+      return;
+    }
+
+    var fertig = 0;
+    toast('Wird vorbereitet …', 60000);
+
+    var reihe = liste.map(function (p) {
+      return function () {
+        return holeMitFortschritt(p, function (anteil) {
+          var gesamtAnteil = (fertig + anteil) / liste.length;
+          toast('Wird vorbereitet … ' + Math.round(gesamtAnteil * 100) + ' %', 60000);
+        }).then(function (b) {
+          fertig++;
+          return new File([b], dateiName(p), { type: b.type || 'application/octet-stream' });
         });
-    })).then(function (dateien) {
-      if (summe > SHARE_MAX_BYTES) {
-        toast('Zusammen ' + groesse(summe) +
-          ' – das ist zu viel auf einmal. Bitte weniger auswählen.', 5000);
-        return;
-      }
+      };
+    });
+
+    // Nacheinander laden – gleichzeitig würde der Speicher des Handys
+    // unnötig belastet.
+    reihe.reduce(function (kette, schritt) {
+      return kette.then(function (gesammelt) {
+        return schritt().then(function (d) { return gesammelt.concat([d]); });
+      });
+    }, Promise.resolve([])).then(function (dateien) {
       if (!navigator.canShare({ files: dateien })) {
-        toast('Dieses Gerät kann Dateien nicht direkt sichern. ' +
-          'Bild lange antippen und „Zu Fotos hinzufügen" wählen.', 6000);
+        elToast.classList.add('hidden');
+        toast('Dieses Gerät kann Dateien nicht direkt sichern – ' +
+          'es wird stattdessen geladen.', 5000);
+        herunterladen(liste);
         return;
       }
       return navigator.share({ files: dateien, title: 'Unsere Hochzeitsfotos' })
-        .then(function () { toast('Fertig – im Menü „In Fotos sichern" wählen.'); })
+        .then(function () { toast('Fertig – „In Fotos sichern" wählen.'); })
         .catch(function (e) {
-          // Abbruch durch den Nutzer ist kein Fehler.
           if (e && e.name === 'AbortError') { elToast.classList.add('hidden'); return; }
-          toast('Sichern nicht möglich. Bild lange antippen und ' +
-            '„Zu Fotos hinzufügen" wählen.', 6000);
+          elToast.classList.add('hidden');
+          // Das Gerät hat abgelehnt, fast immer wegen der Grösse.
+          if (liste.length === 1) hilfeZeigen(liste[0]);
+          else {
+            toast('Das Gerät hat abgelehnt – bitte einzeln sichern.', 5000);
+          }
         });
     }).catch(function () {
-      toast('Dateien konnten nicht geladen werden.', 4000);
+      toast('Datei konnte nicht geladen werden. Bitte nochmal versuchen.', 4000);
     });
   }
+
+  /* Anleitung für grosse Dateien.
+   *
+   * Die Web-Share-Schnittstelle braucht die Datei komplett im Speicher –
+   * daran scheitert ein 300-MB-Video auf dem Handy. Der eingebaute Weg des
+   * Geräts kennt diese Grenze nicht: Auf iOS spielt der Player das Video
+   * und bietet im Teilen-Menü „Video sichern"; ein Bild wird durch langes
+   * Drücken zu den Fotos hinzugefügt. Beides ohne Grössenbeschränkung –
+   * es muss nur jemand zeigen.
+   */
+  function hilfeZeigen(p) {
+    var istVideo = p.kind !== 'photo';
+    var titel = istVideo ? 'Video sichern' : 'Bild sichern';
+    var schritte;
+
+    if (istIOS && istVideo) {
+      schritte = [
+        'Auf „Öffnen" tippen – das Video startet.',
+        'Unten links das Teilen-Symbol antippen.',
+        '„Video sichern" wählen.',
+      ];
+    } else if (istIOS) {
+      schritte = [
+        'Auf „Öffnen" tippen – das Bild erscheint gross.',
+        'Das Bild gedrückt halten.',
+        '„Zu Fotos hinzufügen" wählen.',
+      ];
+    } else {
+      schritte = [
+        'Auf „In Dateien laden" tippen.',
+        'Die Datei landet in den Downloads.',
+        'Die Galerie-App zeigt sie meist automatisch an.',
+      ];
+    }
+
+    el('hilfeTitel').textContent = titel + ' (' + groesse(p.bytes) + ')';
+    el('hilfeText').textContent =
+      'Für so grosse Dateien gibt es einen eigenen Weg – ' +
+      'er funktioniert unabhängig von der Grösse:';
+
+    var ol = el('hilfeSchritte');
+    ol.textContent = '';
+    schritte.forEach(function (t) {
+      var li = document.createElement('li');
+      li.textContent = t;
+      ol.appendChild(li);
+    });
+
+    var url = dateiUrl(p);
+    el('hilfeOeffnen').href = url;
+    el('hilfeOeffnen').textContent = istVideo ? '▶ Öffnen' : '🖼️ Öffnen';
+    el('hilfeLaden').href = url;
+    el('hilfeLaden').setAttribute('download', dateiName(p));
+
+    el('hilfeBlatt').classList.remove('hidden');
+    document.body.classList.add('lb-offen');
+  }
+
+  function hilfeSchliessen() {
+    el('hilfeBlatt').classList.add('hidden');
+    if (elLb.classList.contains('hidden')) {
+      document.body.classList.remove('lb-offen');
+    }
+  }
+
+  el('hilfeZu').addEventListener('click', hilfeSchliessen);
+  el('hilfeBlatt').addEventListener('click', function (e) {
+    if (e.target === el('hilfeBlatt')) hilfeSchliessen();
+  });
+  el('hilfeOeffnen').addEventListener('click', hilfeSchliessen);
 
   // ---------------------------------------------------------- Auswahl
 
@@ -588,6 +779,18 @@
     render();
   });
 
+  // Änderungen an der Begrüssung erscheinen ohne Neuladen.
+  (function () {
+    try {
+      var es = new EventSource('/api/stream');
+      es.addEventListener('gruss', function (e) {
+        var g = JSON.parse(e.data);
+        el('grussTitel').textContent = g.titel;
+        el('grussText').textContent = g.text;
+      });
+    } catch (e) { /* ohne Live-Verbindung geht es auch */ }
+  })();
+
   var params = new URLSearchParams(location.search);
 
   fetch('/api/feed')
@@ -601,9 +804,16 @@
       kategorien = f.kategorien || [];
       photos = f.photos || [];
 
+      if (f.gruss) {
+        el('grussTitel').textContent = f.gruss.titel;
+        el('grussText').textContent = f.gruss.text;
+      }
+
       elContent.classList.remove('hidden');
       elAktionen.classList.remove('hidden');
-      elSub.textContent = f.count + ' Aufnahmen von ' + f.uploaders + ' Gästen';
+      var videos = photos.filter(function (p) { return p.kind !== 'photo'; }).length;
+      elSub.textContent = f.count + ' Aufnahmen von ' + f.uploaders + ' Gästen' +
+        (videos ? ' · davon ' + videos + ' Videos' : '');
 
       var namen = Array.from(new Set(photos.map(function (p) { return p.uploader; })))
         .sort(function (a, b) { return a.localeCompare(b, 'de'); });

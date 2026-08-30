@@ -20,9 +20,16 @@
 
 <div id="content" class="hidden">
 
-  <header class="galkopf">
-    <h1>💒 Unsere Hochzeitsfotos</h1>
-    <p class="sub" id="subline">&nbsp;</p>
+  <!-- Begrüssung: das Erste, was ein Gast sieht -->
+  <header class="gruss">
+    <h1 id="grussTitel">Danke, dass ihr da wart 💛</h1>
+    <p class="gruss-text" id="grussText"></p>
+    <p class="gruss-zahlen" id="subline">&nbsp;</p>
+    <ul class="gruss-hilfe">
+      <li><b>Antippen</b> zeigt ein Bild gross</li>
+      <li><b>★</b> sind unsere Lieblingsbilder</li>
+      <li><b>📲</b> speichert direkt in eure Fotos</li>
+    </ul>
   </header>
 
   <!-- Filterleiste: klebt oben, waagrecht scrollbar -->
@@ -57,7 +64,7 @@
 <div class="aktionen hidden" id="aktionen">
   <div class="normal" id="aktionenNormal">
     <button class="btn primary" id="btnDownloads">⬇️ Herunterladen</button>
-    <button class="btn" id="btnAuswahl">☑️ Auswählen</button>
+    <button class="btn" id="btnAuswahl">☑️ Mehrere wählen</button>
   </div>
   <div class="auswahl hidden" id="aktionenAuswahl">
     <span id="auswahlZahl">0</span>
@@ -74,17 +81,36 @@
     <span class="lbpos" id="lbPos"></span>
     <button class="lbicon" id="lbClose" aria-label="Schliessen">✕</button>
   </div>
-  <div class="media" id="lbMedia"></div>
+
+  <div class="media" id="lbMedia">
+    <button class="lbpfeil links" id="lbPrev" aria-label="Zurück">‹</button>
+    <button class="lbpfeil rechts" id="lbNext" aria-label="Weiter">›</button>
+  </div>
+
   <div class="lbfuss">
     <div class="meta">
       <div class="who" id="lbWho"></div>
       <div class="cap" id="lbCap"></div>
     </div>
     <div class="lbknoepfe">
-      <button class="btn" id="lbPrev" aria-label="Zurück">‹</button>
-      <button class="btn primary" id="lbSichern">📲 Sichern</button>
-      <a class="btn" id="lbDownload" download>⬇️</a>
-      <button class="btn" id="lbNext" aria-label="Weiter">›</button>
+      <button class="btn primary" id="lbSichern">📲 In Fotos sichern</button>
+      <a class="btn" id="lbDownload" download>⬇️ <span id="lbGroesse">Laden</span></a>
+    </div>
+    <p class="lbtipp hidden" id="lbTipp"></p>
+  </div>
+</div>
+
+<!-- Anleitung für grosse Dateien: der native Weg des Geräts kennt
+     keine Grössenbeschränkung, muss aber gezeigt werden. -->
+<div class="blatt hidden" id="hilfeBlatt">
+  <div class="blatt-innen">
+    <button class="blatt-zu" id="hilfeZu" aria-label="Schliessen">✕</button>
+    <h2 id="hilfeTitel">Video sichern</h2>
+    <p class="blatt-text" id="hilfeText"></p>
+    <ol class="blatt-schritte" id="hilfeSchritte"></ol>
+    <div class="blatt-knoepfe">
+      <a class="btn primary" id="hilfeOeffnen" target="_blank" rel="noopener">▶ Öffnen</a>
+      <a class="btn" id="hilfeLaden" download>⬇️ In Dateien laden</a>
     </div>
   </div>
 </div>

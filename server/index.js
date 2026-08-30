@@ -83,6 +83,7 @@ function rowToPublic(r) {
     uploadedAt: r.uploaded_at,
     hasOriginal: !!r.has_original,
     ext: r.ext_original || null,
+    bytes: r.original_bytes || 0,
   };
 }
 
@@ -101,6 +102,32 @@ function classifyTime(takenAt, uploadedAt) {
     archive: isArchive && !!takenAt ? 1 : 0,
     effectiveAt: isArchive ? uploadedAt : takenAt,
   };
+}
+
+/* Begrüssung über der Galerie.
+ *
+ * Bewusst in den Einstellungen und nicht fest im HTML: Es sind eure Worte
+ * an eure Gäste, nicht meine. Der Standard ist nur ein Vorschlag.
+ */
+const STANDARD_GRUSS = {
+  titel: 'Danke, dass ihr da wart 💛',
+  text: 'Diese Bilder habt ihr alle zusammen gemacht – jedes einzelne ist ' +
+        'ein Stück von unserem Tag. Schaut euch in Ruhe um und nehmt mit, ' +
+        'was euch gefällt.',
+};
+
+function getGruss() {
+  try {
+    const roh = db.getSetting('gruss');
+    if (roh) {
+      const g = JSON.parse(roh);
+      return {
+        titel: str(g.titel, 120) || STANDARD_GRUSS.titel,
+        text: str(g.text, 600) || STANDARD_GRUSS.text,
+      };
+    }
+  } catch { /* kaputter Eintrag -> Standard */ }
+  return STANDARD_GRUSS;
 }
 
 // Aufgabenliste aus den Einstellungen, mit Rückfall auf die Standardliste.
@@ -241,6 +268,14 @@ app.post('/api/upload', upSmall.fields([
   }
 
   sse.emit('photo', { ...rowToPublic(db.byId(id)), firstUpload });
+
+  // Eine knappe Zeile je Beitrag. Ohne sie lässt sich hinterher nicht
+  // nachvollziehen, was am Abend ankam und was nicht.
+  console.log('[upload] %s  %s  %s%s%s',
+    id, kind.padEnd(7), uploader,
+    row.archive ? '  (von früher)' : '',
+    firstUpload ? '  (erster Beitrag)' : '');
+
   // archive zurückmelden, damit die Upload-Seite es dem Gast anzeigen kann.
   res.json({ id, existed: false, archive: !!row.archive });
 });
@@ -265,13 +300,15 @@ app.post('/api/original/:id', upOriginal.single('original'), async (req, res) =>
   const ziel = path.join(db.dirs.photos, `${p.id}-o.${ext}`);
   await fsp.rename(req.file.path, ziel);
   try {
-    db.markOriginal(p.id, ext, str(req.file.mimetype, 100));
+    db.markOriginal(p.id, ext, str(req.file.mimetype, 100), req.file.size);
   } catch (e) {
     // Sonst läge das Original unbemerkt herum und die Galerie böte
     // weiterhin nur das Anzeigebild an.
     await fsp.unlink(ziel).catch(() => {});
     throw e;
   }
+  console.log('[original] %s  %s  %s MB',
+    p.id, ext, Math.round(req.file.size / 1048576));
   res.json({ ok: true });
 });
 
@@ -287,6 +324,7 @@ app.get('/api/feed', (req, res) => {
     uploaders: c.uploaders,
     challenges: getChallenges(),
     kategorien: getKategorien(),
+    gruss: getGruss(),
     photos: db.listVisible().map(rowToPublic),
   });
 });
@@ -571,7 +609,9 @@ async function teilFertig(marke) {
   const ziel = path.join(db.dirs.photos, `${p.id}-o.${u.ext}`);
   await fsp.rename(u.pfad, ziel);
   try {
-    db.markOriginal(p.id, u.ext, '');
+    db.markOriginal(p.id, u.ext, '', u.bytes);
+    console.log('[original] %s  %s  %s MB (stückweise)',
+      p.id, u.ext, Math.round(u.bytes / 1048576));
   } catch (e) {
     await fsp.unlink(ziel).catch(() => {});
     teilLaeufe.delete(marke);
@@ -658,6 +698,30 @@ app.post('/api/mod/sichten', modAuth, (req, res) => {
   res.json({ ok: true, photo, offen: db.countOffen() });
 });
 
+/* Verlauf aus der Ereignistabelle.
+ *
+ * Der eigentliche Server-Log liegt bei Docker und wird irgendwann gedreht.
+ * Die Ereignisse stehen dagegen in der Datenbank und überleben jeden
+ * Neustart – das ist der verlässlichere Rückblick auf den Abend.
+ */
+app.get('/api/mod/verlauf', modAuth, (req, res) => {
+  const limit = Math.min(intOr(req.query.limit, 200), 1000);
+  const zeilen = db.eventsLetzte(limit).map((e) => {
+    let d = {};
+    try { d = JSON.parse(e.payload); } catch { /* kaputt -> leer */ }
+    return {
+      seq: e.seq,
+      zeit: e.created_at,
+      art: e.type,
+      id: d.id || null,
+      wer: d.uploader || null,
+      kind: d.kind || null,
+      hidden: typeof d.hidden === 'boolean' ? d.hidden : null,
+    };
+  });
+  res.json({ zeilen, gesamt: db.maxSeq() });
+});
+
 app.get('/api/mod/fehlende-originale', modAuth, (req, res) => {
   res.json({ eintraege: db.ohneOriginal().map(rowToPublic) });
 });
@@ -686,6 +750,20 @@ app.post('/api/mod/nachreichen/fertig', modAuth, async (req, res) => {
   if (r.fehler === 404) return res.status(404).json({ error: 'unbekannt' });
   if (r.fehler) return res.status(400).json({ error: 'nichts empfangen' });
   res.json({ ok: true, bytes: r.bytes, photo: r.photo });
+});
+
+app.post('/api/mod/gruss', modAuth, (req, res) => {
+  const titel = str(req.body.titel, 120);
+  const text = str(req.body.text, 600);
+  if (!titel && !text) {
+    db.setSetting('gruss', '');           // leer = Standard
+    sse.emit('gruss', STANDARD_GRUSS);
+    return res.json({ ok: true, gruss: STANDARD_GRUSS });
+  }
+  db.setSetting('gruss', JSON.stringify({ titel, text }));
+  const gruss = getGruss();
+  sse.emit('gruss', gruss);
+  res.json({ ok: true, gruss });
 });
 
 app.post('/api/mod/favorite', modAuth, (req, res) => {

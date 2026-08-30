@@ -177,6 +177,7 @@ export default async function run({ base, key, ok }) {
     seite.status === 200 && html.includes('chipsleiste') && html.includes('aktionen'));
 
   await gaesteStueckweise({ base, ok });
+  await galerieDetails({ base, key, ok });
 }
 
 /* Der Gaeste-Weg fuer grosse Originale und seine Grenzen. */
@@ -247,4 +248,90 @@ export async function gaesteStueckweise({ base, ok }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dateiname: 'x.mp4' }),
     })).status === 404);
+}
+
+/* Galerie-Feinheiten: Dateigroesse, Begruessung, Altfoto-Filter. */
+export async function galerieDetails({ base, key, ok }) {
+  // --- Groesse des Originals muss im Feed stehen. Ohne sie kann die
+  //     Galerie nicht VORHER entscheiden, ob ein Video sicherbar ist.
+  const p = await uploadPhoto(base, { who: 'Groessentest', kind: 'video' });
+  const daten = Buffer.alloc(1234567, 0x41);
+  const fo = new FormData();
+  fo.append('original', new Blob([daten], { type: 'video/mp4' }), 'CLIP.MP4');
+  await fetch(`${base}/api/original/${p.body.id}`, { method: 'POST', body: fo });
+  await wait(200);
+
+  let feed = await (await fetch(base + '/api/feed')).json();
+  const eintrag = feed.photos.find((x) => x.id === p.body.id);
+  ok('Feed nennt die Grösse des Originals', eintrag?.bytes === daten.length,
+    eintrag?.bytes + ' statt ' + daten.length);
+
+  // Auch beim stueckweisen Weg muss die Groesse stimmen.
+  const p2 = await uploadPhoto(base, { who: 'Groessentest', kind: 'video' });
+  const s2 = await (await fetch(`${base}/api/original/${p2.body.id}/start`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dateiname: 'GROSS.MOV' }),
+  })).json();
+  await fetch(`${base}/api/original/${p2.body.id}/teil?marke=${s2.marke}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/octet-stream' },
+    body: Buffer.alloc(65432, 7),
+  });
+  await fetch(`${base}/api/original/${p2.body.id}/fertig`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ marke: s2.marke }),
+  });
+  await wait(200);
+  feed = await (await fetch(base + '/api/feed')).json();
+  ok('Auch stückweise Uploads melden die Grösse',
+    feed.photos.find((x) => x.id === p2.body.id)?.bytes === 65432);
+
+  ok('Fotos ohne Original melden Grösse 0',
+    feed.photos.filter((x) => !x.hasOriginal).every((x) => x.bytes === 0));
+
+  // --- Begruessung
+  ok('Standard-Begrüssung wird geliefert',
+    !!feed.gruss && feed.gruss.titel.length > 0 && feed.gruss.text.length > 0,
+    JSON.stringify(feed.gruss));
+
+  const eigen = await (await modFetch(base, key, '/api/mod/gruss', {
+    titel: 'Ihr seid die Besten',
+    text: 'Danke für diesen Tag.',
+  })).json();
+  ok('Eigene Begrüssung lässt sich setzen',
+    eigen.gruss.titel === 'Ihr seid die Besten');
+  await wait(150);
+  feed = await (await fetch(base + '/api/feed')).json();
+  ok('Sie steht im Feed', feed.gruss.titel === 'Ihr seid die Besten');
+
+  const zurueck = await (await modFetch(base, key, '/api/mod/gruss',
+    { titel: '', text: '' })).json();
+  ok('Leeren stellt den Vorschlag wieder her',
+    zurueck.gruss.titel !== 'Ihr seid die Besten' && zurueck.gruss.titel.length > 0);
+
+  ok('Begrüssung ändern braucht den Schlüssel',
+    (await fetch(base + '/api/mod/gruss', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ titel: 'x' }),
+    })).status === 401);
+
+  // --- Altfotos als eigene Auswahl
+  const alt = await uploadPhoto(base, {
+    who: 'Oma', takenAt: new Date('1998-06-01').getTime(),
+  });
+  await wait(200);
+  feed = await (await fetch(base + '/api/feed')).json();
+  ok('Altfoto ist als solches erkannt',
+    feed.photos.find((x) => x.id === alt.body.id)?.archive === true);
+
+  await modFetch(base, key, '/api/mod/gallery', { open: true });
+  const zip = await fetch(base + '/api/gallery/zip?gast=Oma');
+  ok('Altfotos lassen sich einzeln laden', zip.status === 200);
+  await modFetch(base, key, '/api/mod/gallery', { open: false });
+
+  // --- Die Galerie-Seite bringt die neuen Bausteine mit
+  const html = await (await fetch(base + '/galerie')).text();
+  ok('Galerie enthält Begrüssung und Vollbild-Pfeile',
+    html.includes('grussTitel') && html.includes('lbpfeil'));
+  ok('Vollbild hat einen beschrifteten Download-Knopf',
+    html.includes('lbDownload') && html.includes('lbGroesse'));
 }
