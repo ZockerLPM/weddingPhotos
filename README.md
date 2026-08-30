@@ -16,6 +16,7 @@ alles als ZIP.
 | `/galerie` | Galerie mit Download – gesperrt bis zur Freischaltung | alle Gäste, nach dem Fest |
 | `/mod#SCHLÜSSEL` | Moderation: ausblenden, Fotowand steuern, Rückblick, Galerie öffnen | Trauzeuge/in |
 | `/sichten` | Sichten nach der Feier – Vollbild, Tastatur, Aussortieren | Brautpaar |
+| `/buch` | Fotobuch: Vorschau, als PDF drucken, ZIP für Druckdienste | Brautpaar |
 
 ## Wie es funktioniert
 
@@ -484,6 +485,85 @@ ausgeblendet oder geändert wurde – der verlässlichere Rückblick auf den Abe
 Stand („lädt 42 %", „✓✓ komplett gesichert", „⚠️ …"). Ein fehlgeschlagener
 Upload lässt sich dort antippen und neu starten.
 
+## Fotobuch
+
+Unter [`/buch`](public/buch.html) entsteht aus der Galerie ein Buch – mit
+Vorschau, die genau zeigt, was hinterher herauskommt. Zwei Ausgabewege, ein
+gemeinsamer Bauplan:
+
+**🖨️ Drucken / als PDF.** Der Browser macht aus der Seite über „Drucken →
+Als PDF sichern" eine fertige Datei. Das Stylesheet setzt A4 quer, echte
+Seitenumbrüche und blendet die Werkzeugleiste aus. Vor dem Drucken werden
+alle Bilder nachgeladen – sonst blieben Lücken im PDF.
+
+**📦 ZIP für Druckdienste.** Durchnummeriert nach Kapitel und Position
+(`01_Trauung/01-003_Anna.jpg`), weil CEWE, Saal & Co. ihre Vorlagen in
+Dateinamen-Reihenfolge befüllen. Originale, wo vorhanden, dazu ein
+`00_Inhalt.txt` mit der Kapitelübersicht.
+
+### Collagen statt Kontaktabzug
+
+Immer vier gleich grosse Bilder je Seite sehen aus wie ein Kontaktabzug.
+Unter **Gestaltung → Collage** wechseln die Seitenaufteilungen stattdessen
+durch: ein grosses Bild neben zwei kleinen, ein ganzseitiges dazwischen,
+ein Streifen aus drei Hochformaten, dann wieder ein ruhiger Vierer.
+Neun Vorlagen stecken in [`server/buchvorlagen.js`](server/buchvorlagen.js).
+
+Zwei Dinge machen das brauchbar statt zufällig:
+
+* **Die Reihenfolge liegt fest**, sie wird nicht ausgewürfelt. Ein Buch soll
+  bei jedem Aufschlagen gleich aussehen – und ein Zufallsgenerator stellt zu
+  oft zwei fast gleiche Seiten nebeneinander. **Abwechslung** wählt, wie weit
+  der Reigen ausholt: *ruhig* bleibt beim Vierer mit gelegentlich einem
+  grossen Bild, *lebhaft* nutzt alle Vorlagen.
+* **Hochformate landen auf hohen Plätzen, breite auf den grossen.** Jede
+  Vorlage sagt je Platz, welche Bildform dorthin passt; beim Verteilen
+  bekommt jeder geforderte Platz zuerst ein passendes Bild. Sonst würde ein
+  Hochformat im breiten Heldenplatz auf einen Streifen zusammengeschnitten.
+
+Beim Schneiden schaut der Server drei Vorlagen voraus und nimmt die, deren
+Formen am besten zu den nächsten Bildern passen. Ganz am Ende eines Kapitels,
+wo weniger übrig bleibt als jede Vorlage braucht, greift die grösste, die
+noch passt.
+
+**Gerechnet wird auf dem Server**, nicht im Browser: Vorschau, Ausdruck und
+ZIP-Export kämen sonst mit drei verschiedenen Aufteilungen heraus. Die Seite
+bekommt jede Buchseite fertig geschnitten geliefert – als CSS-Grid
+(`grid-template-areas`) mit den Bildern in Platz-Reihenfolge.
+
+Wer es gleichmässig mag, stellt **Gestaltung → Raster** ein; dann greift
+wieder *Bilder je Seite*.
+
+### Was sich einstellen lässt
+
+| | |
+|---|---|
+| **Titel, Untertitel, Widmung** | erscheinen auf der ersten Seite |
+| **Gestaltung** | Collage (wechselnde Aufteilungen) oder Raster |
+| **Abwechslung** | ruhig, gemischt, lebhaft – nur bei Collage |
+| **Bilder je Seite** | 1 (ganzseitig), 2, 4 oder 6 – nur beim Raster |
+| **Bilder füllen ihren Platz** | beschneidet die Ränder; aus = alles zu sehen, weisse Ränder |
+| **Höchstens je Kapitel** | 0 = alle |
+| **Beschriftung** | Name und Uhrzeit unter den Bildern, oder Gruss |
+| **Kapitel** | einzeln an- und abwählbar, in der Reihenfolge der Kategorien |
+| **Lieblingsbilder / Von früher** | eigene Kapitel, zuschaltbar |
+
+Aufbau: Titelseite → Lieblingsbilder → je Kategorie ein Trenner und die
+Bildseiten → „Weitere Aufnahmen" → „Von früher". Jedes Foto erscheint genau
+einmal; ein Lieblingsbild taucht in seiner Kategorie nicht noch einmal auf.
+
+**Beim Kürzen wird gleichmässig ausgedünnt**, nicht vorne abgeschnitten. Ein
+Kapitel auf 24 Bilder zu bringen, indem man die ersten 24 nimmt, erzählt nur
+den Anfang – über den ganzen Zeitraum verteilt bleibt der Verlauf erhalten.
+
+Jede Änderung wirkt sofort auf die Vorschau; gespeichert wird erst mit
+**Einstellungen merken** – und dann nimmt auch der ZIP-Export sie.
+
+> Für die Bildseiten werden die Anzeigebilder mit 1600 px verwendet. Bei
+> 2 bis 6 Bildern je Seite reicht das für 300 dpi bequem; nur ganzseitig
+> und auf den grossen Collagen-Plätzen ist es knapp. Der ZIP-Export nimmt
+> dafür die Originale.
+
 ## Bestand prüfen
 
 Wenn im `data`-Ordner mehr zu liegen scheint, als in Fotowand und Galerie
@@ -526,7 +606,7 @@ npm test
 ```
 
 Startet für jede Suite einen eigenen Server mit temporärem Datenverzeichnis
-und prüft 298 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
+und prüft 334 Punkte: den EXIF-Parser (gegen selbst gebaute JPEGs mit
 bekannten Metadaten), Grundfunktionen (Upload, Moderation, Galerie, ZIP,
 Fehlerfälle), die Upload-Warteschlange inklusive nachgebautem iOS-Verhalten,
 die Abendfunktionen, Altfoto-Erkennung und Aufgaben-Editor sowie die
@@ -535,8 +615,8 @@ Serien, Duplikate, Favoriten, Paketbau, fortsetzbare Downloads und
 endgültiges Löschen –, das stückweise Nachreichen grosser Originale sowie
 Kategorien, Auswahl-Downloads, die Sichtungs-Seite, den stückweisen Upload
 grosser Videos, Dateigrössen, Begrüssung und Altfoto-Filter der Galerie
-sowie den Verlauf, Handy-Versionen, „kein Original", die Paket-Vorschau sowie die
-Datumskorrektur. Vor jedem Deploy einmal laufen lassen.
+sowie den Verlauf, Handy-Versionen, „kein Original", die Paket-Vorschau, die
+Datumskorrektur und das Fotobuch. Vor jedem Deploy einmal laufen lassen.
 
 ## Projektstruktur
 
@@ -547,6 +627,8 @@ server/           Node.js-Backend (Express, SQLite, SSE)
   kategorien.js   Standard-Kategorien und Prüfung der bearbeiteten Liste
   nachbereitung.js Serien, Duplikate, Download-Pakete, endgültiges Löschen
   videos.js       Handy-Versionen der Videos (ffmpeg)
+  buch.js         Bauplan des Fotobuchs und ZIP-Export
+  buchvorlagen.js Seitenvorlagen für die Collagen
   db.js           SQLite-Schema, Migrationen und Zugriffe (better-sqlite3, WAL)
   sse.js          Event-Verteiler mit Nachhol-Logik
   ulid.js         Zeitlich sortierbare Foto-IDs
@@ -556,6 +638,7 @@ public/           Frontend, reines HTML/CSS/JS ohne Build-Schritt
   box.html        Erzählecke              + js/box.js
   galerie.html    Galerie (handy-zuerst)  + js/gallery.js
   sichten.html    Sichten mit Tastatur    + js/sichten.js
+  buch.html       Fotobuch, druckfertig   + js/buch.js
   mod.html        Moderation              + js/mod.js
   js/challenges.js  lädt die Aufgabenliste vom Server, von mehreren Seiten genutzt
   js/exif.js        liest den Aufnahmezeitpunkt aus den Bild-Metadaten
@@ -815,6 +898,7 @@ anlegen, gesichertes `data/` nach `/opt/hochzeit/app/data/` kopieren,
 | Video wird nicht hochgeladen | Behoben. Bisher scheiterte der ganze Upload, wenn sich kein Standbild aus dem Video gewinnen liess. Jetzt gibt es einen Platzhalter, das Video geht in jedem Fall hoch |
 | Video zeigt eine schwarze Kachel mit 🎬 | Der Browser konnte kein Standbild gewinnen (oft HEVC vom iPhone in Chrome). Das Video selbst ist vollständig gespeichert |
 | Video kam nur als Vorschaubild an | Behoben: Originale gehen jetzt auch beim Gäste-Upload in 8-MB-Stücken hoch. Altbestand über **🧹 Nach der Feier → 🎬 Originale nachreichen** ergänzen |
+| Abgehakte Einträge sind nicht mehr erreichbar | Behoben. War alles abgehakt, blieb die Liste leer – und der Umschalter wurde gar nicht erst gezeichnet. Er erscheint jetzt immer, sobald es abgehakte gibt |
 | Aufnahmen tragen das Datum von heute | **📅 Datum korrigieren** in der Moderation – zählt die Tage und schiebt jeden falschen auf den Hochzeitstag, unter Beibehaltung der Uhrzeit |
 | Fehler beim Sichern grosser Videos in die Fotos-App | In der Moderation **📱 Handy-Versionen** erzeugen – danach nimmt die Galerie beim Sichern automatisch die kleinere Fassung |
 | `ffmpeg ist nicht installiert` | Image neu bauen: `docker compose up -d --build`. Ohne ffmpeg bleibt nur diese eine Funktion aus |

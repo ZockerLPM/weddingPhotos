@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Fotobuch</title>
+  <link rel="stylesheet" href="/app.css">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+</head>
+<body class="buch">
+
+<!-- Werkzeugleiste: beim Drucken ausgeblendet -->
+<aside class="bu-leiste" id="buLeiste">
+  <div class="bu-kopf">
+    <h1>📖 Fotobuch</h1>
+    <a class="btn" href="/mod" title="Zurück zur Moderation">✕</a>
+  </div>
+
+  <p class="bu-stand" id="buStand">wird geladen …</p>
+
+  <label class="field">Titel
+    <input type="text" id="buTitel" maxlength="80"></label>
+  <label class="field">Untertitel
+    <input type="text" id="buUnter" maxlength="120"
+           placeholder="z. B. 15. August 2026"></label>
+  <label class="field">Widmung (optional)
+    <textarea id="buWidmung" rows="3" maxlength="600"
+              placeholder="Ein paar Zeilen auf der ersten Seite …"></textarea></label>
+
+  <label class="field">Gestaltung
+    <select id="buLayout">
+      <option value="collage">Collage – wechselnde Seitenaufteilungen</option>
+      <option value="raster">Raster – überall gleich viele Bilder</option>
+    </select></label>
+
+  <label class="field" id="buAbwechslungFeld">Abwechslung
+    <select id="buAbwechslung">
+      <option value="ruhig">ruhig – meist Vierer, gelegentlich ein grosses</option>
+      <option value="gemischt">gemischt – ausgewogen</option>
+      <option value="lebhaft">lebhaft – viele verschiedene Aufteilungen</option>
+    </select>
+    <span class="bu-hinweis">Hochformate landen automatisch auf hohen
+      Plätzen, breite Bilder auf den grossen.</span></label>
+
+  <label class="field hidden" id="buProSeiteFeld">Bilder je Seite
+    <select id="buProSeite">
+      <option value="1">1 – ganzseitig</option>
+      <option value="2">2</option>
+      <option value="4">4</option>
+      <option value="6">6</option>
+    </select></label>
+
+  <label class="kastenzeile"><input type="checkbox" id="buFuellen">
+    <span>Bilder füllen ihren Platz (beschneidet die Ränder)</span></label>
+
+  <label class="field">Höchstens je Kapitel
+    <input type="number" id="buProKapitel" min="0" max="500" step="1">
+    <span class="bu-hinweis">0 = alle. Wird gekürzt, dann gleichmässig über
+      den ganzen Zeitraum – so bleibt der Verlauf erhalten.</span></label>
+
+  <label class="kastenzeile"><input type="checkbox" id="buBeschriftung">
+    <span>Name und Uhrzeit unter den Bildern</span></label>
+  <label class="kastenzeile"><input type="checkbox" id="buFavoriten">
+    <span>Mit Kapitel „Lieblingsbilder"</span></label>
+  <label class="kastenzeile"><input type="checkbox" id="buAltfotos">
+    <span>Mit Kapitel „Von früher"</span></label>
+
+  <h2 class="bu-unter">Kapitel</h2>
+  <ul class="bu-kapitel" id="buKapitel"></ul>
+
+  <div class="bu-knoepfe">
+    <button class="btn primary" id="buDrucken">🖨️ Drucken / als PDF</button>
+    <a class="btn" id="buZip" href="#" download>📦 ZIP für Druckdienst</a>
+    <button class="btn" id="buSpeichern">Einstellungen merken</button>
+  </div>
+  <p class="status" id="buStatus"></p>
+</aside>
+
+<!-- Das Buch selbst -->
+<main class="bu-seiten" id="buSeiten"></main>
+
+</body>
+<script src="/js/buch.js"></script>
+</html>

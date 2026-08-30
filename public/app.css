@@ -1456,3 +1456,210 @@ body.sichten .toast {
   top: calc(52px + env(safe-area-inset-top));
   bottom: auto;
 }
+
+/* ===================================================================
+   Fotobuch – Bildschirmvorschau und Druck
+   =================================================================== */
+
+body.buch {
+  background: #2a2e35;          /* dunkler Tisch, damit die Seiten wirken */
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+}
+
+/* Werkzeugleiste links, klebt beim Scrollen */
+.bu-leiste {
+  position: sticky;
+  top: 0;
+  flex: none;
+  width: 320px;
+  max-height: 100vh;
+  overflow-y: auto;
+  background: var(--bg);
+  border-right: 1px solid #2a2f37;
+  padding: 16px 16px 40px;
+}
+
+.bu-kopf {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.bu-kopf h1 { font-size: 1.2rem; margin: 0; }
+.bu-stand { color: var(--accent); font-size: .85rem; margin: 0 0 14px; }
+.bu-unter { font-size: .95rem; margin: 18px 0 6px; color: var(--accent); }
+.bu-hinweis { display: block; color: var(--muted); font-size: .75rem; margin-top: 4px; }
+
+.bu-leiste .field { margin-bottom: 12px; }
+.bu-leiste input[type="text"],
+.bu-leiste input[type="number"],
+.bu-leiste select,
+.bu-leiste textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 9px;
+  border: 1px solid #3a3f48;
+  background: var(--card2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: .92rem;
+  margin-top: 4px;
+}
+
+.bu-kapitel { list-style: none; margin: 0 0 8px; padding: 0; }
+
+.bu-kapitel label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  font-size: .88rem;
+  cursor: pointer;
+}
+
+.bu-kapitel input[type="checkbox"] {
+  width: 18px; height: 18px; accent-color: var(--accent); flex: none;
+}
+
+.bu-kapitel .zahl { margin-left: auto; color: var(--muted); font-size: .8rem; }
+
+.bu-knoepfe { display: grid; gap: 8px; margin-top: 16px; }
+.bu-knoepfe .btn { text-align: center; text-decoration: none; padding: 12px; }
+
+/* Die Seiten */
+.bu-seiten {
+  flex: 1;
+  min-width: 0;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+/* A4 quer – das gängige Fotobuchformat. 297x210 mm bei 96 dpi. */
+.bu-seite {
+  width: 1122px;
+  height: 794px;
+  background: #fff;
+  color: #1a1a1a;
+  padding: 46px;
+  box-sizing: border-box;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .45);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.bu-seite.titelseite,
+.bu-seite.kapitelseite {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.titelseite h1 { font-size: 46px; margin: 0 0 12px; font-weight: 600; }
+.titelseite .unter { font-size: 20px; color: #555; margin: 0 0 28px; }
+.titelseite .widmung {
+  font-size: 16px; line-height: 1.7; color: #333;
+  max-width: 560px; margin: 0 0 32px; font-style: italic;
+}
+.titelseite .titelfuss { font-size: 13px; color: #888; margin: 0; }
+
+.kapitelseite .kapitel-icon { font-size: 64px; margin-bottom: 10px; }
+.kapitelseite h2 { font-size: 34px; margin: 0 0 8px; font-weight: 600; }
+.kapitelseite .kapitel-zahl { font-size: 14px; color: #888; margin: 0; }
+
+/* Bildseiten – die Aufteilung kommt als Grid vom Server. */
+.bu-seite.bildseite {
+  display: grid;
+  gap: 14px;
+}
+
+.bu-seite figure {
+  margin: 0;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow: hidden;
+}
+
+.bu-seite figure img {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  /* Vollständig zeigen – Ränder bleiben weiss. */
+  object-fit: contain;
+}
+
+/* Füllen beschneidet die Ränder. Das ist der Collagen-Look: Die Bilder
+   berühren einander, statt in weissen Kästen zu schwimmen. */
+.bu-seite figure img.fuellt {
+  object-fit: cover;
+  height: 100%;
+}
+
+.bu-seite figcaption {
+  flex: none;
+  font-size: 10px;
+  color: #777;
+  text-align: center;
+  line-height: 1.35;
+  /* Zwei Zeilen genügen; längere Grüsse werden abgeschnitten statt das
+     Raster zu sprengen. */
+  max-height: 2.7em;
+  overflow: hidden;
+}
+
+/* --- Druck ---------------------------------------------------------
+   Die Werkzeugleiste verschwindet, die Seiten werden zu echten Seiten.
+   color-adjust sorgt dafür, dass der weisse Grund erhalten bleibt. */
+@page {
+  size: A4 landscape;
+  margin: 0;
+}
+
+@media print {
+  body.buch {
+    background: #fff;
+    display: block;
+  }
+
+  .bu-leiste { display: none !important; }
+
+  .bu-seiten {
+    padding: 0;
+    display: block;
+  }
+
+  .bu-seite {
+    width: 100%;
+    height: 100vh;
+    box-shadow: none;
+    page-break-after: always;
+    break-after: page;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .bu-seite:last-child { page-break-after: auto; break-after: auto; }
+}
+
+/* Auf schmalen Schirmen die Leiste über die Seiten legen */
+@media (max-width: 900px) {
+  body.buch { flex-direction: column; }
+  .bu-leiste {
+    position: static;
+    width: 100%;
+    max-height: none;
+    border-right: none;
+    border-bottom: 1px solid #2a2f37;
+  }
+  .bu-seiten { padding: 12px; }
+  .bu-seite { transform: scale(.32); transform-origin: top center; margin-bottom: -520px; }
+}

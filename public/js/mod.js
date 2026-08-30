@@ -1132,6 +1132,8 @@
         var mb = Math.round((r.bytes || datei.size) / 1048576);
         stand.textContent = '✓ nachgereicht (' + mb + ' MB)';
         label.remove();
+        keins.remove();          // „kein Original" ist damit erledigt
+        p.ohneOriginal = false;
         var vorhanden = photos.get(p.id);
         if (vorhanden && r.photo) photos.set(p.id, Object.assign(vorhanden, r.photo));
       }).catch(function () {
@@ -1155,24 +1157,16 @@
       .then(function (r) { return r.json(); })
       .then(function (d) {
         var liste = d.eintraege || [];
-        if (!liste.length) {
-          nachStatus('Bei allen sichtbaren Beiträgen liegt das Original vor.', 'ok');
-          return;
-        }
-        var videos = liste.filter(function (p) { return p.kind !== 'photo'; }).length;
-        nachStatus(liste.length + ' Beiträge ohne Original, davon ' + videos +
-          ' Videos' +
-          (d.uebersprungen ? ' · ' + d.uebersprungen + ' als „kein Original" abgehakt' : '') +
-          '. Datei auswählen – sie geht in Stücken hoch, die Grösse spielt ' +
-          'keine Rolle.');
 
-        // Auch die abgehakten lassen sich holen – falls doch noch eine
-        // Datei auftaucht.
+        /* Der Umschalter muss IMMER erscheinen, wenn es abgehakte gibt –
+         * auch dann, wenn gerade nichts offen ist. Sonst kommt man an sie
+         * nicht mehr heran, sobald man alle abgehakt hat.
+         */
         if (d.uebersprungen || zeigeAbgehakte) {
           var um = document.createElement('button');
           um.className = 'btn';
           um.textContent = zeigeAbgehakte
-            ? '↩ nur offene zeigen'
+            ? '↩ nur die offenen zeigen'
             : '👁️ auch die ' + d.uebersprungen + ' abgehakten zeigen';
           um.addEventListener('click', function () {
             zeigeAbgehakte = !zeigeAbgehakte;
@@ -1180,6 +1174,25 @@
           });
           elNachErgebnis.appendChild(um);
         }
+
+        if (!liste.length) {
+          nachStatus(zeigeAbgehakte
+            ? 'Hier ist nichts – bei allen liegt ein Original vor.'
+            : 'Bei allen offenen Beiträgen liegt das Original vor.' +
+              (d.uebersprungen
+                ? ' ' + d.uebersprungen + ' sind als „kein Original" abgehakt – ' +
+                  'oben einblenden, falls doch noch eine Datei auftaucht.'
+                : ''), 'ok');
+          return;
+        }
+
+        var videos = liste.filter(function (p) { return p.kind !== 'photo'; }).length;
+        nachStatus(liste.length + ' Beiträge ohne Original, davon ' + videos +
+          ' Videos' +
+          (d.uebersprungen && !zeigeAbgehakte
+            ? ' · ' + d.uebersprungen + ' abgehakt' : '') +
+          '. Datei auswählen – sie geht in Stücken hoch, die Grösse spielt ' +
+          'keine Rolle.');
 
         var ul = document.createElement('ul');
         ul.className = 'fehlliste';

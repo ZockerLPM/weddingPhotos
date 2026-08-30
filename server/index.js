@@ -12,6 +12,7 @@ import * as sse from './sse.js';
 import { DEFAULT_CHALLENGES, sanitizeChallenges } from './challenges.js';
 import * as nach from './nachbereitung.js';
 import * as videos from './videos.js';
+import * as buch from './buch.js';
 import { DEFAULT_KATEGORIEN, sanitizeKategorien } from './kategorien.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -304,6 +305,8 @@ app.post('/api/original/:id', upOriginal.single('original'), async (req, res) =>
   await fsp.rename(req.file.path, ziel);
   try {
     db.markOriginal(p.id, ext, str(req.file.mimetype, 100), req.file.size);
+    // Ein vorhandenes Original hebt ein früheres „kein Original" auf.
+    if (p.original_skip) db.setOriginalSkip(p.id, false);
   } catch (e) {
     // Sonst läge das Original unbemerkt herum und die Galerie böte
     // weiterhin nur das Anzeigebild an.
@@ -613,6 +616,7 @@ async function teilFertig(marke) {
   await fsp.rename(u.pfad, ziel);
   try {
     db.markOriginal(p.id, u.ext, '', u.bytes);
+    if (p.original_skip) db.setOriginalSkip(p.id, false);
     console.log('[original] %s  %s  %s MB (stückweise)',
       p.id, u.ext, Math.round(u.bytes / 1048576));
   } catch (e) {
@@ -869,6 +873,40 @@ app.post('/api/mod/datum', modAuth, (req, res) => {
   db.setSetting('hochzeitstag', ziel);
   console.log('[datum] %d Aufnahmen auf %s verschoben', n, ziel);
   res.json({ ok: true, geaendert: n });
+});
+
+/* Fotobuch: Bauplan, Vorschau und Export.
+ *
+ * Die Druckseite /buch holt sich denselben Bauplan wie der ZIP-Export –
+ * sonst zeigte die Vorschau etwas anderes als das Ergebnis.
+ */
+app.get('/api/mod/buch', modAuth, (req, res) => {
+  res.json(buch.planFuerSeite());
+});
+
+app.post('/api/mod/buch', modAuth, (req, res) => {
+  const gespeichert = buch.speichern(req.body);
+  res.json(buch.planFuerSeite(gespeichert));
+});
+
+// Vorschau einer Einstellung, ohne sie zu speichern – für die Schieberegler
+// auf der Druckseite.
+app.post('/api/mod/buch/vorschau', modAuth, (req, res) => {
+  const c = { ...buch.einstellungen(), ...(req.body || {}) };
+  res.json(buch.planFuerSeite(c));
+});
+
+// Ein Download-Verweis kann keine Kopfzeilen setzen – deshalb hier der
+// Schlüssel in der Adresse, wie beim Galerie-ZIP.
+app.get('/api/mod/buch/zip', (req, res) => {
+  if (!(req.query.key && safeEq(req.query.key, MOD_KEY))) {
+    return res.status(401).json({ error: 'ungueltiger Schluessel' });
+  }
+  res.set({
+    'Content-Type': 'application/zip',
+    'Content-Disposition': 'attachment; filename="hochzeit-fotobuch.zip"',
+  });
+  buch.zipSchreiben(res, buch.einstellungen());
 });
 
 app.post('/api/mod/favorite', modAuth, (req, res) => {

@@ -205,6 +205,7 @@ export default async function run({ base, key, ok, dataDir }) {
   await verlauf({ base, key, ok });
   await feinschliff({ base, key, ok });
   await datumUndListe({ base, key, ok });
+  await abgehaktZurueck({ base, key, ok });
 }
 
 /* Grosse Originale nachreichen.
@@ -590,4 +591,61 @@ export async function datumUndListe({ base, key, ok }) {
     { marke: start.marke })).json();
   ok('Auch abgehakte Einträge nehmen ein Original an',
     fertig.photo.hasOriginal === true);
+}
+
+/* Der Weg zurück: alles abgehakt, dann taucht doch eine Datei auf.
+ *
+ * Genau hier hakte es: Ist nichts mehr offen, war die Liste leer – und der
+ * Umschalter zu den abgehakten wurde gar nicht erst gezeichnet.
+ */
+export async function abgehaktZurueck({ base, key, ok }) {
+  const modGet6 = (pfad) =>
+    fetch(base + pfad, { headers: { 'x-mod-key': key } }).then((r) => r.json());
+
+  // Erst alles offene abhaken, damit die Liste wirklich leer ist.
+  let offen = await modGet6('/api/mod/fehlende-originale');
+  for (const e of offen.eintraege) {
+    await modFetch(base, key, '/api/mod/kein-original', { id: e.id, skip: true });
+  }
+
+  offen = await modGet6('/api/mod/fehlende-originale');
+  ok('Die offene Liste ist jetzt leer', offen.eintraege.length === 0);
+  ok('Die Anzahl der abgehakten wird trotzdem gemeldet',
+    offen.uebersprungen > 0, 'uebersprungen=' + offen.uebersprungen);
+
+  const alle = await modGet6('/api/mod/fehlende-originale?alle=1');
+  ok('Über ?alle=1 sind sie erreichbar', alle.eintraege.length > 0,
+    'n=' + alle.eintraege.length);
+
+  // Für einen davon doch noch ein Original nachreichen.
+  const ziel = alle.eintraege[0];
+  const start = await (await modFetch(base, key, '/api/mod/nachreichen/start',
+    { id: ziel.id, dateiname: 'SPAETER.MP4' })).json();
+  ok('Nachreichen startet auch bei abgehakten', !!start.marke);
+
+  await fetch(base + '/api/mod/nachreichen/teil?marke=' + encodeURIComponent(start.marke), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', 'x-mod-key': key },
+    body: Buffer.alloc(3072, 5),
+  });
+  const fertig = await (await modFetch(base, key, '/api/mod/nachreichen/fertig',
+    { marke: start.marke })).json();
+  ok('Das Original kommt an', fertig.photo.hasOriginal === true);
+  ok('Und „kein Original" ist damit aufgehoben',
+    fertig.photo.ohneOriginal === false, JSON.stringify(fertig.photo.ohneOriginal));
+
+  const danach = await modGet6('/api/mod/fehlende-originale?alle=1');
+  ok('Der Eintrag verschwindet aus der Fehlliste',
+    !danach.eintraege.some((e) => e.id === ziel.id));
+  ok('Die Zahl der abgehakten sinkt',
+    danach.uebersprungen === offen.uebersprungen - 1,
+    danach.uebersprungen + ' statt ' + (offen.uebersprungen - 1));
+
+  // Und der Umschalter im Skript darf nicht hinter einem frühen Ausstieg liegen.
+  const js = await (await fetch(base + '/js/mod.js')).text();
+  const umschalter = js.indexOf('abgehakten zeigen');
+  const ausstieg = js.indexOf("Bei allen offenen Beiträgen liegt das Original vor");
+  ok('Der Umschalter wird vor dem Ausstieg gezeichnet',
+    umschalter > 0 && ausstieg > 0 && umschalter < ausstieg,
+    'Umschalter@' + umschalter + ' Ausstieg@' + ausstieg);
 }
